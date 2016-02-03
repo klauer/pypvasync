@@ -42,6 +42,7 @@ from .dbr import native_type
 
 
 _pending_futures = set()
+loop = asyncio.get_event_loop()
 
 
 def _make_callback(func, args):
@@ -581,12 +582,13 @@ def _onGetEvent(args):
         print('future was cancelled', future)
         return
 
-    # TODO futures not threadsafe? pass in a threading.Lock() too?
     if args.status != dbr.ECA_NORMAL:
         # TODO look up in appdev manual
-        future.set_exception(CASeverityException('get', str(args.status)))
+        ex = CASeverityException('get', str(args.status))
+        loop.call_soon_threadsafe(future.set_exception, ex)
     else:
-        future.set_result(memcopy(dbr.cast_args(args)))
+        loop.call_soon_threadsafe(future.set_result,
+                                  memcopy(dbr.cast_args(args)))
 
 
 @ca_callback_event
@@ -600,7 +602,7 @@ def _onPutEvent(args, **kwds):
         print('putevent: hmm, future already done', future, id(future))
     elif not future.cancelled():
         print('finishing put event')
-        future.set_result(True)
+        loop.call_soon_threadsafe(future.set_result, True)
 
 
 # create global reference to these callbacks
