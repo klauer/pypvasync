@@ -23,8 +23,8 @@ _PVcache_ = {}
 
 
 @asyncio.coroutine
-def get_pv(pvname, form='time', connect=False,
-           context=None, timeout=5.0, **kws):
+def get_pv(pvname, form='time', connect=False, context=None, timeout=5.0,
+           **kws):
     """get PV from PV cache or create one if needed.
 
     Arguments
@@ -38,24 +38,17 @@ def get_pv(pvname, form='time', connect=False,
     if form not in ('native', 'time', 'ctrl'):
         form = 'native'
 
-    thispv = None
-    if context is None:
-        context = get_current_context()
-        if (pvname, form, context) in _PVcache_:
-            thispv = _PVcache_[(pvname, form, context)]
+    context = get_current_context()
+    key = (pvname, form, context)
+    thispv = _PVcache_.get(key, None)
 
-    start_time = time.time()
     # not cached -- create pv (automaticall saved to cache)
     if thispv is None:
         thispv = PV(pvname, form=form, **kws)
 
     if connect:
-        yield from thispv.wait_for_connection()
-        while not thispv.connected:
-            if time.time() - start_time > timeout:
-                break
-        if not thispv.connected:
-            print('cannot connect to %s' % pvname)
+        yield from thispv.wait_for_connection(timeout=timeout)
+
     return thispv
 
 
