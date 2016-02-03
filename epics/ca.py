@@ -27,7 +27,7 @@ from threading import Thread
 from functools import partial
 from copy import deepcopy
 
-from .utils import (STR2BYTES, BYTES2STR, NULLCHAR, NULLCHAR_2,
+from .utils import (BYTES2STR, NULLCHAR, NULLCHAR_2,
                     strjoin, is_string, is_string_or_bytes,
                     ascii_string, PY64_WINDOWS)
 
@@ -427,24 +427,20 @@ def withConnectedCHID(fcn):
     before calling the decorated function.
     """
     @functools.wraps(fcn)
-    def wrapper(*args, **kwds):
+    def wrapper(chid, *args, **kwds):
         "withConnectedCHID wrapper"
-        if len(args) > 0:
-            chid = args[0]
-            args = list(args)
-            if isinstance(chid, int):
-                args[0] = chid = dbr.chid_t(chid)
-            if not isinstance(chid, dbr.chid_t):
-                raise ChannelAccessException("%s: not a valid chid!" %
-                                             (fcn.__name__))
-            if not is_connected(chid):
-                timeout = kwds.get('timeout', DEFAULT_CONNECTION_TIMEOUT)
-                fmt = "%s() timed out waiting '%s' to connect (%d seconds)"
-                if not connect_channel(chid, timeout=timeout):
-                    raise ChannelAccessException(fmt % (fcn.__name__,
-                                                        name(chid), timeout))
+        if isinstance(chid, int):
+            chid = dbr.chid_t(chid)
 
-        return fcn(*args, **kwds)
+        if not is_connected(chid):
+            #     timeout = kwds.get('timeout', DEFAULT_CONNECTION_TIMEOUT)
+            #     fmt = ("%s() timed out waiting '%s' to connect (%d"
+            #           "seconds)" % (fcn.__name__, name(chid), timeout))
+            #     if not connect_channel(chid, timeout=timeout):
+            raise ChannelAccessException('Channel not connected '
+                                         ''.format(name(chid)))
+
+        return fcn(chid, *args, **kwds)
     return wrapper
 
 
