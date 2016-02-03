@@ -68,11 +68,9 @@ class ChannelCallbackBase:
 
     @_locked
     def process(self, **kwargs):
-        print('process', self, ':')
         with self.context._sub_lock:
             exceptions = []
             for cbid, func in self.callbacks.items():
-                print('\tprocess', func)
                 try:
                     func(chid=self.chid, **kwargs)
                 except Exception as ex:
@@ -81,10 +79,8 @@ class ChannelCallbackBase:
                                  '%s)', self.chid, kwargs, exc_info=ex)
 
             for cbid in list(self.oneshots):
-                print('\tprocess removing oneshot', cbid, self.callbacks[cbid])
                 self.remove_callback(cbid)
 
-            print('process done')
             return exceptions
 
     def __repr__(self):

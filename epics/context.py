@@ -14,13 +14,18 @@ from . import dbr
 from . import utils
 from . import cast
 from . import errors
-from .callback_registry import (ChannelCallbackRegistry, ChannelCallbackBase)
+from .callback_registry import (ChannelCallbackRegistry, ChannelCallbackBase,
+                                _locked as _cb_locked)
 
 logger = logging.getLogger(__name__)
 loop = asyncio.get_event_loop()
 
 
 class ConnectionCallback(ChannelCallbackBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.status = None
+
     def __ge__(self, other):
         if self.chid != other.chid:
             raise TypeError('Cannot compare subscriptions from different '
@@ -28,19 +33,30 @@ class ConnectionCallback(ChannelCallbackBase):
 
         return True
 
-    def create(self):
-        if not ca.is_connected(self.chid):
-            return
+    @_cb_locked
+    def add_callback(self, cbid, func, *, oneshot=False):
+        # since callbacks are locked on the context throughout this, it's only
+        # necessary to check if it's connected prior to adding the callback. if
+        # a connection callback comes in somewhere during the process of adding
+        # the callback, it will be queued and eventually run after this method
+        # releases the lock
+        if self.status is not None and self.status['connected']:
+            loop.call_soon_threadsafe(partial(func, chid=self.chid,
+                                              connected=True,
+                                              pvname=self.pvname))
+            if oneshot:
+                return
 
-        # subscribe to connection, but it's already connected. run the
-        # callback now
-        global loop
-        loop.call_soon_threadsafe(partial(self._process, connected=True,
-                                          pvname=self.pvname))
+        super().add_callback(cbid, func, oneshot=oneshot)
 
     def destroy(self):
         super().destroy()
         # for now, don't destroy channels
+
+    @_cb_locked
+    def process(self, **kwargs):
+        self.status = kwargs
+        super().process(**kwargs)
 
 
 class MonitorCallback(ChannelCallbackBase):
