@@ -10,7 +10,9 @@ import time
 import ctypes
 import copy
 import asyncio
+
 from math import log10
+import numpy as np
 
 from . import ca
 from . import dbr
@@ -96,7 +98,9 @@ class PV(object):
                  connection_callback=None,
                  connection_timeout=None, monitor_mask=None):
 
+        self._context = get_current_context()
         self.monitor_mask = monitor_mask
+        self.chid = None
         self.pvname = pvname.strip()
         self.form = form.lower()
         self.verbose = verbose
@@ -104,19 +108,19 @@ class PV(object):
         self.ftype = None
         self.connected = False
         self.connection_timeout = connection_timeout
+        # holder of data returned from create_subscription
+        self._mon_cbid = None
+        self._conn_started = False
+        self.connection_callbacks = []
+        self.callbacks = {}
         self._args = dict(value=None,
                           pvname=self.pvname,
                           count=-1,
                           precision=None)
-        self.connection_callbacks = []
 
         if connection_callback is not None:
             self.connection_callbacks = [connection_callback]
 
-        self.callbacks = {}
-        # holder of data returned from create_subscription
-        self._mon_cbid = None
-        self._conn_started = False
         if isinstance(callback, (tuple, list)):
             for i, thiscb in enumerate(callback):
                 if hasattr(thiscb, '__call__'):
@@ -124,16 +128,11 @@ class PV(object):
         elif hasattr(callback, '__call__'):
             self.callbacks[0] = (callback, {})
 
-        self.chid = None
-
-        self._context = get_current_context()
         self.chid = self._context.create_channel(self.pvname)
-
         # subscribe should be smart enough to run the subscription if the
         # callback happens inbetween
         self._context.subscribe(sig='connection', func=self.__on_connect,
                                 chid=self.chid)
-
         self.ftype = dbr.promote_type(ca.field_type(self.chid),
                                       use_ctrl=(self.form == 'ctrl'),
                                       use_time=(self.form == 'time'))
@@ -147,96 +146,81 @@ class PV(object):
     def _pvid(self):
         return (self.pvname, self.form, self._context)
 
-    def force_connect(self, pvname=None, chid=None, connected=True, **kws):
-        if chid is None:
-            chid = self.chid
-        if isinstance(chid, ctypes.c_long):
-            chid = chid.value
-        self.chid = chid
-        self.__on_connect(pvname=pvname, chid=chid, connected=connected, **kws)
+    def _connected(self, chid):
+        self.chid = dbr.chid_t(chid)
+        try:
+            count = ca.element_count(self.chid)
+        except ca.ChannelAccessException:
+            time.sleep(0.025)
+            count = ca.element_count(self.chid)
+        self._args['count'] = count
+        self._args['nelm'] = count
+        self._args['host'] = ca.host_name(self.chid)
+        self._args['access'] = ca.access(self.chid)
+        self._args['read_access'] = (1 == ca.read_access(self.chid))
+        self._args['write_access'] = (1 == ca.write_access(self.chid))
+        self.ftype = dbr.promote_type(ca.field_type(self.chid),
+                                      use_ctrl=self.form == 'ctrl',
+                                      use_time=self.form == 'time')
+
+        ftype_name = dbr.ChannelType(self.ftype).name.lower()
+        self._args['type'] = ftype_name
+        self._args['typefull'] = ftype_name
+        self._args['ftype'] = self.ftype
+
+        if self.auto_monitor is None:
+            self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
+        if self._mon_cbid is None and self.auto_monitor:
+            # you can explicitly request a subscription mask (ie
+            # DBE_ALARM|DBE_LOG) by passing it as the auto_monitor arg,
+            # otherwise if you specify 'True' you'll just get the default
+            # set in ca.DEFAULT_SUBSCRIPTION_MASK
+            mask = self.monitor_mask
+            use_ctrl = (self.form == 'ctrl')
+            use_time = (self.form == 'time')
+            ptype = dbr.promote_type(self.ftype, use_ctrl=use_ctrl,
+                                     use_time=use_time)
+
+            ctx = self._context
+            handler, cbid = ctx.subscribe(sig='monitor',
+                                          func=self.__on_changes,
+                                          chid=self.chid, ftype=ptype,
+                                          mask=mask)
+            self._mon_cbid = cbid
 
     def __on_connect(self, pvname=None, chid=None, connected=True):
         "callback for connection events"
         print('on connect', self, connected)
         if connected:
-            self.chid = dbr.chid_t(chid)
-            try:
-                count = ca.element_count(self.chid)
-            except ca.ChannelAccessException:
-                time.sleep(0.025)
-                count = ca.element_count(self.chid)
-            self._args['count'] = count
-            self._args['nelm'] = count
-            self._args['host'] = ca.host_name(self.chid)
-            self._args['access'] = ca.access(self.chid)
-            self._args['read_access'] = (1 == ca.read_access(self.chid))
-            self._args['write_access'] = (1 == ca.write_access(self.chid))
-            self.ftype = dbr.promote_type(ca.field_type(self.chid),
-                                          use_ctrl=self.form == 'ctrl',
-                                          use_time=self.form == 'time')
+            self._connected(chid)
 
-            ftype_name = dbr.ChannelType(self.ftype).name.lower()
-            self._args['type'] = ftype_name
-            self._args['typefull'] = ftype_name
-            self._args['ftype'] = self.ftype
-
-            if self.auto_monitor is None:
-                self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
-            if self._mon_cbid is None and self.auto_monitor:
-                # you can explicitly request a subscription mask (ie
-                # DBE_ALARM|DBE_LOG) by passing it as the auto_monitor arg,
-                # otherwise if you specify 'True' you'll just get the default
-                # set in ca.DEFAULT_SUBSCRIPTION_MASK
-                mask = self.monitor_mask
-                use_ctrl = (self.form == 'ctrl')
-                use_time = (self.form == 'time')
-                ptype = dbr.promote_type(self.ftype, use_ctrl=use_ctrl,
-                                         use_time=use_time)
-
-                ctx = self._context
-                handler, cbid = ctx.subscribe(sig='monitor',
-                                              func=self.__on_changes,
-                                              chid=self.chid, ftype=ptype,
-                                              mask=mask)
-                self._mon_cbid = cbid
-
-        for conn_cb in self.connection_callbacks:
-            if hasattr(conn_cb, '__call__'):
+        try:
+            for conn_cb in self.connection_callbacks:
                 conn_cb(pvname=self.pvname, connected=connected, pv=self)
-            elif not connected and self.verbose:
-                print("PV '%s' disconnected." % pvname)
-
-        # waiting until the very end until to set self.connected prevents
-        # threads from thinking a connection is complete when it is actually
-        # still in progress.
-        self.connected = connected
-        return
+        finally:
+            # waiting until the very end until to set self.connected prevents
+            # threads from thinking a connection is complete when it is
+            # actually still in progress.
+            self.connected = connected
 
     @asyncio.coroutine
     def wait_for_connection(self, timeout=None):
         """wait for a connection that started with connect() to finish"""
 
-        if not self.connected:
-            if timeout is None:
-                timeout = self.connection_timeout
+        if self.connected:
+            return True
 
-            yield from self._context.connect_channel(self.chid,
-                                                     timeout=timeout)
+        if timeout is None:
+            timeout = self.connection_timeout
 
+        yield from self._context.connect_channel(self.chid, timeout=timeout)
         return True
-
-    @asyncio.coroutine
-    def connect(self, timeout=None):
-        "check that a PV is connected, forcing a connection if needed"
-        value = yield from self.wait_for_connection()
-        print('wait for conn returned')
-        return value
 
     @asyncio.coroutine
     def reconnect(self):
         "try to reconnect PV"
-        self.auto_monitor = None
-        self._mon_cbid = None
+        # TODO not implemented
+        self.disconnect()
         self.connected = False
         self._conn_started = False
         yield from self.wait_for_connection()
@@ -256,21 +240,22 @@ class PV(object):
                     monitor callback (True, default) or to make an
                     explicit CA call for the value.
 
-        >>> p.get('13BMD:m1.DIR')
+        >>> value = yield from p.get('13BMD:m1.DIR')
+        >>> value
         0
-        >>> p.get('13BMD:m1.DIR', as_string=True)
+        >>> value = yield from p.get('13BMD:m1.DIR', as_string=True)
+        >>> value
         'Pos'
         """
         yield from self.wait_for_connection()
 
-        if with_ctrlvars and getattr(self, 'units', None) is None:
+        if with_ctrlvars and self.units is None:
             yield from self.get_ctrlvars()
 
         if ((not use_monitor) or
                 (not self.auto_monitor) or
                 (self._args['value'] is None) or
                 (count is not None and count > len(self._args['value']))):
-            print('not use mon')
             self._args['value'] = yield from coroutines.get(self.chid,
                                                             ftype=self.ftype,
                                                             count=count,
@@ -285,14 +270,14 @@ class PV(object):
 
         if count is None:
             count = len(val)
-        if (as_numpy and not isinstance(val, ca.numpy.ndarray)):
+        if (as_numpy and not isinstance(val, np.ndarray)):
             if count == 1:
                 val = [val]
-            val = ca.numpy.array(val)
+            val = np.array(val)
         elif (as_numpy and count == 1 and
-                not isinstance(val, ca.numpy.ndarray)):
-            val = ca.numpy.array([val])
-        elif (not as_numpy and isinstance(val, ca.numpy.ndarray)):
+                not isinstance(val, np.ndarray)):
+            val = np.array([val])
+        elif (not as_numpy and isinstance(val, np.ndarray)):
             val = list(val)
         # allow asking for less data than actually exists in the cached value
         if count < len(val):
@@ -341,7 +326,7 @@ class PV(object):
             return val
         # char waveform as string
         if ntype == dbr.ChType.CHAR and self.count < ca.AUTOMONITOR_MAXLENGTH:
-            if isinstance(val, ca.numpy.ndarray):
+            if isinstance(val, np.ndarray):
                 val = val.tolist()
             elif self.count == 1:  # handles single character in waveform
                 val = [val]
@@ -481,10 +466,11 @@ class PV(object):
         "clear all callbacks"
         self.callbacks = {}
 
-    def _getinfo(self):
+    @asyncio.coroutine
+    def get_info(self):
         "get information paragraph"
         yield from self.wait_for_connection()
-        yield from self.get_ctrlvars()  # <-- TODO coroutine
+        yield from self.get_ctrlvars()
         out = []
         mod = 'native'
         xtype = self._args['typefull']
@@ -517,17 +503,19 @@ class PV(object):
                     'upper_disp_limit', 'lower_disp_limit',
                     'upper_alarm_limit', 'lower_alarm_limit',
                     'upper_warning_limit', 'lower_warning_limit'):
-            if hasattr(self, nam):
-                att = getattr(self, nam)
-                if att is not None:
-                    if nam == 'timestamp':
-                        att = "%.3f (%s)" % (att, fmt_time(att))
-                    elif nam == 'char_value':
-                        att = "'%s'" % att
-                    if len(nam) < 12:
-                        out.append('   %.11s= %s' % (nam + ' ' * 12, str(att)))
-                    else:
-                        out.append('   %.20s= %s' % (nam + ' ' * 20, str(att)))
+            att = getattr(self, nam)
+            if att is None:
+                continue
+
+            if nam == 'timestamp':
+                att = "%.3f (%s)" % (att, fmt_time(att))
+            elif nam == 'char_value':
+                att = "'%s'" % att
+            if len(nam) < 12:
+                out.append('   %.11s= %s' % (nam + ' ' * 12, str(att)))
+            else:
+                out.append('   %.20s= %s' % (nam + ' ' * 20, str(att)))
+
         if xtype == 'enum':  # list enum strings
             out.append('   enum strings: ')
             for index, nam in enumerate(self.enum_strs):
@@ -602,11 +590,6 @@ class PV(object):
                                      doc='pv upper ctrl limit')
 
     @property
-    def info(self):
-        "info string"
-        return self._getinfo()
-
-    @property
     def nelm(self):
         """native count (number of elements).
 
@@ -636,7 +619,6 @@ class PV(object):
             return False
 
     def _disconnect(self, deleted):
-
         self.connected = False
 
         ctx = self._context
