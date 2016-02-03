@@ -63,18 +63,21 @@ def fmt_time(tstamp=None):
 
 
 class PV(object):
-    """Epics Process Variable
+    """Asyncio access to Epics Process Variables
 
     A PV encapsulates an Epics Process Variable.
 
     The primary interface methods for a pv are to get() and put() is value::
 
-      >>> p = PV(pv_name)  # create a pv object given a pv name
-      >>> p.get()          # get pv value
-      >>> p.put(val)       # set pv to specified value.
+      >>> @asyncio.coroutine
+      ... def test():
+      ...     p = PV(pv_name)             # create a pv object given a pv name
+      ...     val = yield from p.get()    # get pv value
+      ...     yield from p.put(val)       # set pv to specified value.
+      ...     return p
 
     Additional important attributes include::
-
+      >>> p = yield from test()
       >>> p.pvname         # name of pv
       >>> p.value          # pv value (can be set or get)
       >>> p.char_value     # string representation of pv value
@@ -545,154 +548,74 @@ class PV(object):
         out.append('=============================')
         return '\n'.join(out)
 
-    def _getarg(self, arg):
-        "wrapper for property retrieval"
-        if self._args['value'] is None:
-            self.get()
+    def _get_arg(self, arg):
+        # if self._args['value'] is None:
+        #     raise RuntimeError('value not yet retrieved')
         if arg not in self._args or self._args[arg] is None:
+            return None
             if arg in ('status', 'severity', 'timestamp'):
-                self.get_timevars(timeout=1, warn=False)
+                raise RuntimeError('timevars not yet retrieved')
+                # self.get_timevars(timeout=1, warn=False)
             else:
-                self.get_ctrlvars(timeout=1, warn=False)  # <-- TODO coroutine
-        return self._args.get(arg, None)
+                raise RuntimeError('ctrlvars not yet retrieved')
+                # self.get_ctrlvars(timeout=1, warn=False)
+        return self._args[arg]
 
-    def __getval__(self):
-        "get value"
-        return self._getarg('value')
+    def _arg_property(arg, doc):
+        "wrapper for property retrieval"
+        def fget(self):
+            return self._get_arg(arg)
 
-    def __setval__(self, val):
-        "put-value"
-        return self.put(val)
+        return property(fget, doc=doc)
 
-    value = property(__getval__, __setval__, None, "value property")
-
-    @property
-    def char_value(self):
-        "character string representation of value"
-        return self._getarg('char_value')
-
-    @property
-    def status(self):
-        "pv status"
-        return self._getarg('status')
-
-    @property
-    def type(self):
-        "pv type"
-        return self._getarg('type')
-
-    @property
-    def typefull(self):
-        "pv type"
-        return self._args['typefull']
-
-    @property
-    def host(self):
-        "pv host"
-        return self._getarg('host')
-
-    @property
-    def count(self):
-        """count (number of elements). For array data and later EPICS versions,
-        this is equivalent to the .NORD field.  See also 'nelm' property"""
-        if 'count' in self._args and self._args:
-            return self._args['count']
-        else:
-            return self._getarg('count')
-
-    @property
-    def nelm(self):
-        """native count (number of elements).
-        For array data this will return the full array size (ie, the
-        .NELM field).  See also 'count' property"""
-        if self._getarg('count') == 1:
-            return 1
-        return ca.element_count(self.chid)
-
-    @property
-    def read_access(self):
-        "read access"
-        return self._getarg('read_access')
-
-    @property
-    def write_access(self):
-        "write access"
-        return self._getarg('write_access')
-
-    @property
-    def access(self):
-        "read/write access as string"
-        return self._getarg('access')
-
-    @property
-    def severity(self):
-        "pv severity"
-        return self._getarg('severity')
-
-    @property
-    def timestamp(self):
-        "timestamp of last pv action"
-        return self._getarg('timestamp')
-
-    @property
-    def precision(self):
-        "number of digits after decimal point"
-        return self._getarg('precision')
-
-    @property
-    def units(self):
-        "engineering units for pv"
-        return self._getarg('units')
-
-    @property
-    def enum_strs(self):
-        "list of enumeration strings"
-        return self._getarg('enum_strs')
-
-    @property
-    def upper_disp_limit(self):
-        "limit"
-        return self._getarg('upper_disp_limit')
-
-    @property
-    def lower_disp_limit(self):
-        "limit"
-        return self._getarg('lower_disp_limit')
-
-    @property
-    def upper_alarm_limit(self):
-        "limit"
-        return self._getarg('upper_alarm_limit')
-
-    @property
-    def lower_alarm_limit(self):
-        "limit"
-        return self._getarg('lower_alarm_limit')
-
-    @property
-    def lower_warning_limit(self):
-        "limit"
-        return self._getarg('lower_warning_limit')
-
-    @property
-    def upper_warning_limit(self):
-        "limit"
-        return self._getarg('upper_warning_limit')
-
-    @property
-    def upper_ctrl_limit(self):
-        "limit"
-        return self._getarg('upper_ctrl_limit')
-
-    @property
-    def lower_ctrl_limit(self):
-        "limit"
-        return self._getarg('lower_ctrl_limit')
+    char_value = _arg_property('char_value',
+                               doc='character string representation of value')
+    status = _arg_property('status', doc='pv status')
+    type = _arg_property('type', doc='pv type')
+    typefull = _arg_property('typefull', doc='pv typefull')
+    host = _arg_property('hostname of the IOC', doc='pv host')
+    count = _arg_property('count', doc='pv count')
+    read_access = _arg_property('read_access', doc='pv read access')
+    write_access = _arg_property('write_access', doc='pv write access')
+    access = _arg_property('access', doc='pv write access')
+    severity = _arg_property('severity', doc='pv severity')
+    timestamp = _arg_property('timestamp', doc='timestamp of last pv action')
+    precision = _arg_property('precision',
+                              doc='number of digits after decimal point')
+    units = _arg_property('units', doc='engineering units for pv')
+    enum_strs = _arg_property('enum_strs', doc='list of enumeration strings')
+    lower_disp_limit = _arg_property('lower_disp_limit',
+                                     doc='pv lower display limit')
+    upper_disp_limit = _arg_property('upper_disp_limit',
+                                     doc='pv upper display limit')
+    lower_alarm_limit = _arg_property('lower_alarm_limit',
+                                      doc='pv lower alarm limit')
+    upper_alarm_limit = _arg_property('upper_alarm_limit',
+                                      doc='pv upper alarm limit')
+    lower_warning_limit = _arg_property('lower_warning_limit',
+                                        doc='pv lower warning limit')
+    upper_warning_limit = _arg_property('upper_warning_limit',
+                                        doc='pv upper warning limit')
+    lower_ctrl_limit = _arg_property('lower_ctrl_limit',
+                                     doc='pv lower ctrl limit')
+    upper_ctrl_limit = _arg_property('upper_ctrl_limit',
+                                     doc='pv upper ctrl limit')
 
     @property
     def info(self):
         "info string"
         return self._getinfo()
+
+    @property
+    def nelm(self):
+        """native count (number of elements).
+
+        For array data this will return the full array size (ie, the
+        .NELM field).  See also 'count' property
+        """
+        if self.count == 1:
+            return 1
+        return ca.element_count(self.chid)
 
     def __repr__(self):
         "string representation"
