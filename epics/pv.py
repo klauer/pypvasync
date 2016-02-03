@@ -7,7 +7,6 @@
   Epics Process Variable
 """
 import time
-import ctypes
 import copy
 import asyncio
 
@@ -93,17 +92,15 @@ class PV(object):
     _fmtarr = ("PV(%(pvname)r, count=%(count)i/%(nelm)i, "
                "type=%(typefull)r, access=%(access)r>")
 
-    def __init__(self, pvname, callback=None, form='time',
-                 verbose=False, auto_monitor=None,
-                 connection_callback=None,
-                 connection_timeout=None, monitor_mask=None):
+    def __init__(self, pvname, callback=None, form='time', auto_monitor=None,
+                 connection_callback=None, connection_timeout=None,
+                 monitor_mask=None):
 
         self._context = get_current_context()
         self.monitor_mask = monitor_mask
         self.chid = None
         self.pvname = pvname.strip()
         self.form = form.lower()
-        self.verbose = verbose
         self.auto_monitor = auto_monitor
         self.ftype = None
         self.connected = False
@@ -183,7 +180,7 @@ class PV(object):
 
             ctx = self._context
             handler, cbid = ctx.subscribe(sig='monitor',
-                                          func=self.__on_changes,
+                                          func=self._monitor_update,
                                           chid=self.chid, ftype=ptype,
                                           mask=mask)
             self._mon_cbid = cbid
@@ -386,7 +383,7 @@ class PV(object):
         self._args.update(kwds)
         return kwds
 
-    def __on_changes(self, value=None, **kwd):
+    def _monitor_update(self, value=None, **kwd):
         """internal callback function: do not overwrite!!
         To have user-defined code run when the PV value changes,
         use add_callback()
@@ -395,10 +392,6 @@ class PV(object):
         self._args['value'] = value
         self._args['timestamp'] = kwd.get('timestamp', time.time())
         self._set_charval(self._args['value'], call_ca=False)
-        if self.verbose:
-            now = fmt_time(self._args['timestamp'])
-            print('%s: %s (%s)' % (self.pvname,
-                                   self._args['char_value'], now))
         self.run_callbacks()
 
     def run_callbacks(self):
