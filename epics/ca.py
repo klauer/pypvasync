@@ -597,12 +597,6 @@ def _onPutEvent(args, **kwds):
 # create global reference to these callbacks
 
 
-# _CB_PUTWAIT = ctypes.CFUNCTYPE(None, dbr.event_handler_args)(_onPutEvet)
-# _CB_GET     = ctypes.CFUNCTYPE(None, ctypes.pointer(dbr.event_handler_args))(_onGetEvent)
-# _CB_EVENT   = ctypes.CFUNCTYPE(None, dbr.event_handler_args)(_onMonitorEvent)
-
-# _CB_CONNECT = make_callback(_onConnectionEvent, dbr.connection_args)
-
 _CB_CONNECT = dbr.make_callback(_onConnectionEvent, dbr.connection_args)
 _CB_PUTWAIT = dbr.make_callback(_onPutEvent,        dbr.event_handler_args)
 _CB_GET = dbr.make_callback(_onGetEvent,        dbr.event_handler_args)

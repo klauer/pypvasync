@@ -28,7 +28,7 @@ def get_pv(pvname, form='time',  connect=False,
     context   PV threading context (default None)
     timeout   connection timeout, in seconds (default 5.0)
     """
-    
+
     if form not in ('native', 'time', 'ctrl'):
         form = 'native'
 
@@ -39,7 +39,7 @@ def get_pv(pvname, form='time',  connect=False,
             context = ca.current_context()
         if (pvname, form, context) in _PVcache_:
             thispv = _PVcache_[(pvname, form, context)]
-    
+
     start_time = time.time()
     # not cached -- create pv (automaticall saved to cache)
     if thispv is None:
@@ -52,7 +52,7 @@ def get_pv(pvname, form='time',  connect=False,
             if time.time()-start_time > timeout:
                 break
         if not thispv.connected:
-            ca.write('cannot connect to %s' % pvname)
+            print('cannot connect to %s' % pvname)
     return thispv
 
 def fmt_time(tstamp=None):
@@ -151,7 +151,7 @@ class PV(object):
             chid = chid.value
         self._args['chid'] = self.chid = chid
         self.__on_connect(pvname=pvname, chid=chid, conn=conn, **kws)
-        
+
     def __on_connect(self, pvname=None, chid=None, conn=True):
         "callback for connection events"
         # occassionally chid is still None (ie if a second PV is created
@@ -203,7 +203,7 @@ class PV(object):
             if hasattr(conn_cb, '__call__'):
                 conn_cb(pvname=self.pvname, conn=conn, pv=self)
             elif not conn and self.verbose:
-                ca.write("PV '%s' disconnected." % pvname)
+                print("PV '%s' disconnected." % pvname)
 
         # waiting until the very end until to set self.connected prevents
         # threads from thinking a connection is complete when it is actually
@@ -295,7 +295,7 @@ class PV(object):
 
         if count is None:
             count = len(val)
-        if (as_numpy and ca.HAS_NUMPY and 
+        if (as_numpy and ca.HAS_NUMPY and
             not isinstance(val, ca.numpy.ndarray)):
             if count == 1:
                 val = [val]
@@ -370,7 +370,7 @@ class PV(object):
                 cval = ''
             self._args['char_value'] = cval
             return cval
-        
+
         cval  = repr(val)
         if self.count > 1:
             cval = '<array size=%d, type=%s>' % (len(val),
@@ -404,7 +404,7 @@ class PV(object):
         kwds = ca.get_ctrlvars(self.chid, timeout=timeout, warn=warn)
         self._args.update(kwds)
         return kwds
-        
+
     def get_timevars(self, timeout=5, warn=True):
         "get time values for variable"
         if not self.wait_for_connection():
@@ -425,7 +425,7 @@ class PV(object):
         self._set_charval(self._args['value'], call_ca=False)
         if self.verbose:
             now = fmt_time(self._args['timestamp'])
-            ca.write('%s: %s (%s)'% (self.pvname,
+            print('%s: %s (%s)'% (self.pvname,
                                      self._args['char_value'], now))
         self.run_callbacks()
 
