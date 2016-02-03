@@ -11,6 +11,7 @@ import ctypes
 import copy
 import asyncio
 from math import log10
+from collections import defaultdict
 
 from . import ca
 from . import dbr
@@ -92,12 +93,6 @@ class PV(object):
                " access=%(access)s>")
     _fmtarr = ("<PV '%(pvname)s', count=%(count)i/%(nelm)i, "
                "type=%(typefull)s, access=%(access)s>")
-    _fields = ('pvname', 'value', 'char_value', 'status', 'ftype', 'chid',
-               'host', 'count', 'access', 'write_access', 'read_access',
-               'severity', 'timestamp', 'precision', 'units', 'enum_strs',
-               'upper_disp_limit', 'lower_disp_limit', 'upper_alarm_limit',
-               'lower_alarm_limit', 'lower_warning_limit',
-               'upper_warning_limit', 'upper_ctrl_limit', 'lower_ctrl_limit')
 
     def __init__(self, pvname, callback=None, form='time',
                  verbose=False, auto_monitor=None,
@@ -111,20 +106,17 @@ class PV(object):
         self.ftype = None
         self.connected = False
         self.connection_timeout = connection_timeout
-        self._args = {}.fromkeys(self._fields)
-        self._args['pvname'] = self.pvname
-        self._args['count'] = -1
-        self._args['nelm'] = -1
-        self._args['type'] = 'unknown'
-        self._args['typefull'] = 'unknown'
-        self._args['access'] = 'unknown'
+        self._args = dict(value=None,
+                          pvname=self.pvname,
+                          count=-1)
         self.connection_callbacks = []
 
         if connection_callback is not None:
             self.connection_callbacks = [connection_callback]
 
         self.callbacks = {}
-        self._monref = None  # holder of data returned from create_subscription
+        # holder of data returned from create_subscription
+        self._monref = None
         self._conn_started = False
         if isinstance(callback, (tuple, list)):
             for i, thiscb in enumerate(callback):
@@ -136,9 +128,9 @@ class PV(object):
         self.chid = None
         self._args['chid'] = ca.create_channel(self.pvname,
                                                callback=self.__on_connect)
-        self.context = get_current_context()
-        self.context.subscribe(sig='connection', func=self.__on_connect,
-                               chid=self._args['chid'])
+        self._context = get_current_context()
+        self._context.subscribe(sig='connection', func=self.__on_connect,
+                                chid=self._args['chid'])
 
         self.chid = self._args['chid']
         self.ftype = ca.promote_type(self.chid,
@@ -151,8 +143,8 @@ class PV(object):
             _PVcache_[pvid] = self
 
     @property
-    def _pvid(sef):
-        return (self.pvname, self.form, self.context)
+    def _pvid(self):
+        return (self.pvname, self.form, self._context)
 
     def force_connect(self, pvname=None, chid=None, connected=True, **kws):
         if chid is None:
@@ -224,7 +216,8 @@ class PV(object):
             if timeout is None:
                 timeout = self.connection_timeout
 
-            yield from self.context.connect_channel(self.chid, timeout=timeout)
+            yield from self._context.connect_channel(self.chid,
+                                                     timeout=timeout)
 
         return True
 
@@ -556,7 +549,7 @@ class PV(object):
         "wrapper for property retrieval"
         if self._args['value'] is None:
             self.get()
-        if self._args[arg] is None:
+        if arg not in self._args or self._args[arg] is None:
             if arg in ('status', 'severity', 'timestamp'):
                 self.get_timevars(timeout=1, warn=False)
             else:
@@ -586,7 +579,7 @@ class PV(object):
     @property
     def type(self):
         "pv type"
-        return self._args['type']
+        return self._getarg('type')
 
     @property
     def typefull(self):
@@ -602,7 +595,7 @@ class PV(object):
     def count(self):
         """count (number of elements). For array data and later EPICS versions,
         this is equivalent to the .NORD field.  See also 'nelm' property"""
-        if self._args['count'] >= 0:
+        if 'count' in self._args and self._args:
             return self._args['count']
         else:
             return self._getarg('count')
@@ -731,12 +724,13 @@ class PV(object):
         "disconnect PV"
         self.connected = False
 
-        ctx = self.context()
+        ctx = self._context
         pvid = self._pvid
         if pvid in _PVcache_:
             _PVcache_.pop(pvid)
 
         if self._monref is not None:
+            raise NotImplementedError('tell context to detach')
             cback, uarg, evid = self._monref
             ca.clear_subscription(evid)
             ctx = ca.current_context()
@@ -747,7 +741,7 @@ class PV(object):
             del evid
             try:
                 self._monref = None
-                self._args = {}.fromkeys(self._fields)
+                self._args.clear()
             except:
                 pass
 
