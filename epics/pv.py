@@ -281,10 +281,7 @@ class PV(object):
             (not self.auto_monitor) or
             (self._args['value'] is None) or
             (count is not None and count > len(self._args['value']))):
-            ca_get = ca.get
-            if ca.get_cache(self.pvname)['value'] is not None:
-                ca_get = ca.get_complete
-            self._args['value'] = ca_get(self.chid, ftype=self.ftype,
+            self._args['value'] = ca.get(self.chid, ftype=self.ftype,
                                          count=count, timeout=timeout,
                                          as_numpy=as_numpy)
         val = self._args['value']

@@ -1204,13 +1204,11 @@ def get(chid, ftype=None, count=None, timeout=None,
     if timeout is None:
         timeout = 1.0 + log10(max(1, count))
 
-    # poll()
     try:
         value = yield from asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError:
-        msg = "ca.get('%s') timed out after %.2f seconds."
-        warnings.warn(msg % (name(chid), timeout))
-        return None
+    except asyncio.TimeoutError as ex:
+        future.cancel()
+        raise
 
     print("Get Complete> Unpack ", value, count, ftype)
     val = _unpack(chid, value, count=count, ftype=ftype, as_numpy=as_numpy)
@@ -1221,83 +1219,6 @@ def get(chid, ftype=None, count=None, timeout=None,
     elif isinstance(val, ctypes.Array) and HAS_NUMPY and as_numpy:
         val = numpy.ctypeslib.as_array(memcopy(val))
 
-    return val
-
-
-@withConnectedCHID
-def get_complete(chid, ftype=None, count=None, timeout=None,
-                 as_string=False,  as_numpy=True):
-    """returns the current value for a Channel, completing an
-    earlier incomplete :func:`get` that returned ``None``, either
-    because `wait=False` was used or because the data transfer
-    did not complete before the timeout passed.
-
-    Parameters
-    ----------
-    chid : ctypes.c_long
-        Channel ID
-    ftype :  int
-        field type to use (native type is default)
-    count : int
-        maximum element count to return (full data returned by default)
-    as_string : bool
-        whether to return the string representation of the value.
-    as_numpy :  bool
-        whether to return the Numerical Python representation
-        for array / waveform data.
-    timeout : float
-        maximum time to wait for data before returning ``None``.
-
-    Returns
-    -------
-    data : object
-       This function will return ``None`` if the previous :func:`get`
-       actually completed, or if this data transfer also times out.
-
-
-    Notes
-    -----
-    1. The default timeout is dependent on the element count::
-    default_timout = 1.0 + log10(count)  (in seconds)
-
-    2. Consult the doc for :func:`get` for more information.
-
-    """
-    global _cache
-
-    if ftype is None:
-        ftype = field_type(chid)
-    if count is None:
-        count = element_count(chid)
-    else:
-        count = min(count, element_count(chid))
-
-    ncache = _cache[current_context()][name(chid)]
-    if ncache['value'] is None:
-        return None
-
-    t0 = time.time()
-    if timeout is None:
-        timeout = 1.0 + log10(max(1, count))
-    while ncache['value'] is GET_PENDING:
-        poll()
-        if time.time() - t0 > timeout:
-            msg = "ca.get('%s') timed out after %.2f seconds."
-            warnings.warn(msg % (name(chid), timeout))
-            return None
-    print("Get Complete> Unpack ", ncache['value'], count, ftype)
-
-    val = _unpack(chid, ncache['value'], count=count,
-                  ftype=ftype, as_numpy=as_numpy)
-    # print("Get Complete unpacked to ", val)
-
-    if as_string:
-        val = _as_string(val, chid, count, ftype)
-    elif isinstance(val, ctypes.Array) and HAS_NUMPY and as_numpy:
-        val = numpy.ctypeslib.as_array(memcopy(val))
-
-    # value retrieved, clear cached value
-    ncache['value'] = None
     return val
 
 
