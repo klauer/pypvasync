@@ -13,10 +13,130 @@ from . import dbr
 from . import utils
 from . import cast
 from . import errors
-from .callback_registry import ChannelCallbackRegistry
+from .callback_registry import (ChannelCallbackRegistry, ChannelCallbackBase)
 
 logger = logging.getLogger(__name__)
 loop = asyncio.get_event_loop()
+
+
+class ConnectionCallback(ChannelCallbackBase):
+    def __ge__(self, other):
+        if self.chid != other.chid:
+            raise TypeError('Cannot compare subscriptions from different '
+                            'channels')
+
+        return True
+
+    def create(self):
+        if not ca.is_connected(self.chid):
+            return
+
+        # subscribe to connection, but it's already connected. run the
+        # callback now
+        global loop
+        loop.call_soon_threadsafe(partial(self._process, connected=True,
+                                          pvname=self.pvname))
+
+    def destroy(self):
+        pass
+        # for now, don't destroy channels
+
+
+class MonitorCallback(ChannelCallbackBase):
+    '''Callback type 'monitor'
+
+    Parameters
+    ----------
+    mask : int
+        channel mask from dbr.SubscriptionType
+        default is (DBE_VALUE | DBE_ALARM)
+    ftype : int, optional
+        Field type to request, maybe promoted from the native type
+    '''
+    # a monitor can be reused if:
+    #   amask = available_mask / atype = available_type
+    #   rmask = requested_mask / rtype = requested_type
+    #   (amask & rmask) == rmask
+    #   (rtype <= atype)
+    default_mask = (dbr.SubscriptionType.DBE_VALUE |
+                    dbr.SubscriptionType.DBE_ALARM)
+
+    def __init__(self, registry, chid, *, mask=default_mask, ftype=None):
+        super().__init__(registry=registry, chid=chid)
+        if mask <= 0:
+            raise ValueError('Invalid subscription mask')
+
+        if ftype is None:
+            ftype = ca.field_type(chid)
+
+        self.mask = int(mask)
+        self.ftype = int(ftype)
+        self._hash_tuple = (self.chid, self.mask, self.ftype)
+
+        # monitor information for when it's created:
+        # python object referencing the callback id
+        self.py_cid = None
+        # event id returned from ca_create_subscription
+        self.evid = None
+
+    def create(self):
+        logger.debug('Creating a subscription on %s (ftype=%s mask=%s)',
+                     self.pvname, dbr.ChType(self.ftype).name, self.mask)
+        self.evid = ctypes.c_void_p()
+        ca_callback = _on_monitor_event.ca_callback
+        self.py_cid = ctypes.py_object(self.cid)
+        ret = ca.libca.ca_create_subscription(self.ftype, 0, self.chid,
+                                              self.mask, ca_callback,
+                                              self.py_cid, ctypes.byref(evid))
+        ca.PySEVCHK('create_subscription', ret)
+
+    def destroy(self):
+        logger.debug('Clearing subscription on %s (ftype=%s mask=%s) evid=%s',
+                     self.pvname, dbr.ChType(self.ftype).name, self.mask,
+                     self.evid.value)
+        import gc
+        gc.collect()
+
+        print('referrers:', )
+        for i, ref in enumerate(gc.get_referrers(self.py_cid)):
+            info = str(ref)
+            if hasattr(ref, 'f_code'):
+                info = '[frame] {}'.format(ref.f_code.co_name)
+            print(i, '\t', info)
+
+        ret = ca.libca.ca_clear_subscription(self.evid)
+        ca.PySEVCHK('clear_subscription', ret)
+
+        self.py_cid = None
+        self.evid = None
+
+    def __repr__(self):
+        return ('{0.__class__.__name__}(chid={0.chid}, mask={0.mask:04b}, '
+                'ftype={0.ftype})'.format(self))
+
+    def __eq__(self, other):
+        return hash(self) == hash(other)
+
+    def __hash__(self):
+        return hash(self._hash_tuple)
+
+    def __lt__(self, other):
+        return not (self >= other)
+
+    def __le__(self, other):
+        return (self == other) or (self < other)
+
+    def __ge__(self, other):
+        if self.chid != other.chid:
+            raise TypeError('Cannot compare subscriptions from different '
+                            'channels')
+
+        has_req_mask = (other.mask & self.mask) == other.mask
+        type_ok = self.ftype >= other.ftype
+        return has_req_mask and type_ok
+
+    def callbacks_emptied(self):
+        print('all callbacks cleared, remove ca subscription')
 
 
 class CAContextHandler:
@@ -35,9 +155,10 @@ class CAContextHandler:
         self._tasks = None
         self._event_queue = queue.Queue()
 
-        sigs = ['connection', 'monitor']
-        self._cbreg = ChannelCallbackRegistry(allowed_sigs=sigs,
-                                              ignore_exceptions=True)
+        callback_classes = {'connection': ConnectionCallback,
+                            'monitor': MonitorCallback
+                            }
+        self._cbreg = ChannelCallbackRegistry(self, callback_classes)
         self.channel_to_pv = {}
         self.pv_to_channel = {}
         self.ch_monitors = {}
@@ -60,53 +181,12 @@ class CAContextHandler:
         ca.PySEVCHK('create_channel', ret)
         return ca.channel_id_to_int(chid)
 
-    def subscribe(self, sig, func, chid, *, oneshot=False):
-        with self._sub_lock:
-            cid = self._cbreg.subscribe(sig=sig, chid=chid, func=func,
-                                        oneshot=oneshot)
-            return cid
-
-    def subscribe_connect(self, func, chid, *, oneshot=False):
-        with self._sub_lock:
-            # subscribe to connection, but it's already connected
-            # so run the callback now
-            if ca.is_connected(chid):
-                chid = ca.channel_id_to_int(chid)
-                callback = partial(func, pvname=self.channel_to_pv[chid],
-                                   chid=chid, connected=True)
-                self._loop.call_soon_threadsafe(callback)
-                if oneshot:
-                    return
-
-            return self.subscribe(sig='connection', chid=chid, func=func,
-                                  oneshot=oneshot)
-
-    def subscribe_monitor(self, func, chid, *, use_ctrl=False, use_time=True,
-                          mask=None):
-        with self._sub_lock:
-            mask |= self.default_mask
-            ftype = dbr.promote_type(ca.field_type(chid), use_ctrl=use_ctrl,
-                                     use_time=use_time)
-
-            mon_key = (mask, ftype)
-            if mon_key in self.ch_monitors:
-                evid = self.ch_monitors[mon_key]
-            else:
-                evid = ctypes.c_void_p()
-                ca_callback = _on_monitor_event.ca_callback
-                ret = ca.libca.ca_create_subscription(ftype, 0, chid, mask,
-                                                      ca_callback, None,
-                                                      ctypes.byref(evid))
-                ca.PySEVCHK('create_subscription', ret)
-
-                self.ch_monitors[mon_key] = evid
-
-        return self.subscribe(sig='monitor', chid=chid, func=func,
-                              oneshot=False)
+    def subscribe(self, sig, func, chid, *, oneshot=False, **kwargs):
+        return self._cbreg.subscribe(sig=sig, chid=chid, func=func,
+                                     oneshot=oneshot, **kwargs)
 
     def unsubscribe(self, cid):
-        with self._sub_lock:
-            self._cbreg.unsubscribe(cid)
+        self._cbreg.unsubscribe(cid)
 
     def _queue_loop(self, q):
         ca.attach_context(self._ctx)
@@ -145,7 +225,7 @@ class CAContextHandler:
                 chid = info.pop('chid')
                 pvname = ca.name(chid)
                 self.channel_to_pv[chid] = pvname
-                loop.call_soon_threadsafe(partial(self._process_cb,
+                loop.call_soon_threadsafe(partial(self._locked_process_cb,
                                                   event_type, chid, **info))
 
                 # TODO need to further differentiate monitor callbacks based on
@@ -153,10 +233,10 @@ class CAContextHandler:
                 # may be possible to send more info than requested, but never
                 # less
 
-    def _process_cb(self, sig, chid, **info):
+    def _locked_process_cb(self, event_type, chid, **info):
         with self._sub_lock:
-            print('*** cb processing', sig, chid, info)
-            self._cbreg.process(sig, chid, **info)
+            print('*** cb processing', event_type, chid, info)
+            self._cbreg.process(event_type, chid, **info)
 
     def _poll_thread(self):
         '''Poll context ctx in an executor thread'''
@@ -327,3 +407,5 @@ def _on_put_event(args, **kwds):
         loop.call_soon_threadsafe(future.set_result, True)
 
     # ctypes.pythonapi.Py_DecRef(args.usr)
+
+
