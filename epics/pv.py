@@ -536,59 +536,6 @@ class PV(object):
         out.append('=============================')
         return '\n'.join(out)
 
-    def _get_arg(self, arg):
-        # if self._args['value'] is None:
-        #     raise RuntimeError('value not yet retrieved')
-        if arg not in self._args or self._args[arg] is None:
-            return None
-            if arg in ('status', 'severity', 'timestamp'):
-                raise RuntimeError('timevars not yet retrieved')
-                # self.get_timevars(timeout=1, warn=False)
-            else:
-                raise RuntimeError('ctrlvars not yet retrieved')
-                # self.get_ctrlvars(timeout=1, warn=False)
-        return self._args[arg]
-
-    def _arg_property(arg, doc):
-        "wrapper for property retrieval"
-        def fget(self):
-            return self._get_arg(arg)
-
-        return property(fget, doc=doc)
-
-    char_value = _arg_property('char_value',
-                               doc='character string representation of value')
-    status = _arg_property('status', doc='pv status')
-    type = _arg_property('type', doc='pv type')
-    typefull = _arg_property('typefull', doc='pv typefull')
-    host = _arg_property('hostname of the IOC', doc='pv host')
-    count = _arg_property('count', doc='pv count')
-    read_access = _arg_property('read_access', doc='pv read access')
-    write_access = _arg_property('write_access', doc='pv write access')
-    access = _arg_property('access', doc='pv write access')
-    severity = _arg_property('severity', doc='pv severity')
-    timestamp = _arg_property('timestamp', doc='timestamp of last pv action')
-    precision = _arg_property('precision',
-                              doc='number of digits after decimal point')
-    units = _arg_property('units', doc='engineering units for pv')
-    enum_strs = _arg_property('enum_strs', doc='list of enumeration strings')
-    lower_disp_limit = _arg_property('lower_disp_limit',
-                                     doc='pv lower display limit')
-    upper_disp_limit = _arg_property('upper_disp_limit',
-                                     doc='pv upper display limit')
-    lower_alarm_limit = _arg_property('lower_alarm_limit',
-                                      doc='pv lower alarm limit')
-    upper_alarm_limit = _arg_property('upper_alarm_limit',
-                                      doc='pv upper alarm limit')
-    lower_warning_limit = _arg_property('lower_warning_limit',
-                                        doc='pv lower warning limit')
-    upper_warning_limit = _arg_property('upper_warning_limit',
-                                        doc='pv upper warning limit')
-    lower_ctrl_limit = _arg_property('lower_ctrl_limit',
-                                     doc='pv lower ctrl limit')
-    upper_ctrl_limit = _arg_property('upper_ctrl_limit',
-                                     doc='pv upper ctrl limit')
-
     @property
     def nelm(self):
         """native count (number of elements).
@@ -645,3 +592,56 @@ class PV(object):
 
     def __del__(self):
         self._disconnect(deleted=True)
+
+    def _get_arg(self, arg):
+        # if self._args['value'] is None:
+        #     raise RuntimeError('value not yet retrieved')
+        if arg not in self._args or self._args[arg] is None:
+            return None
+            if arg in ('status', 'severity', 'timestamp'):
+                raise RuntimeError('timevars not yet retrieved')
+                # self.get_timevars(timeout=1, warn=False)
+            else:
+                raise RuntimeError('ctrlvars not yet retrieved')
+                # self.get_ctrlvars(timeout=1, warn=False)
+        return self._args[arg]
+
+    def _arg_property(arg, doc):
+        "wrapper for property retrieval"
+        def fget(self):
+            return self._get_arg(arg)
+
+        return property(fget, doc=doc)
+
+    char_value = _arg_property('char_value',
+                               doc='character string representation of value')
+    status = _arg_property('status', doc='pv status')
+    type = _arg_property('type', doc='pv type')
+    typefull = _arg_property('typefull', doc='pv typefull')
+    host = _arg_property('hostname of the IOC', doc='pv host')
+    count = _arg_property('count', doc='pv count')
+    read_access = _arg_property('read_access', doc='pv read access')
+    write_access = _arg_property('write_access', doc='pv write access')
+    access = _arg_property('access', doc='pv write access')
+    severity = _arg_property('severity', doc='pv severity')
+    timestamp = _arg_property('timestamp', doc='timestamp of last pv action')
+    precision = _arg_property('precision',
+                              doc='number of digits after decimal point')
+    units = _arg_property('units', doc='engineering units for pv')
+    enum_strs = _arg_property('enum_strs', doc='list of enumeration strings')
+    lower_disp_limit = _arg_property('lower_disp_limit',
+                                     doc='pv lower display limit')
+    upper_disp_limit = _arg_property('upper_disp_limit',
+                                     doc='pv upper display limit')
+    lower_alarm_limit = _arg_property('lower_alarm_limit',
+                                      doc='pv lower alarm limit')
+    upper_alarm_limit = _arg_property('upper_alarm_limit',
+                                      doc='pv upper alarm limit')
+    lower_warning_limit = _arg_property('lower_warning_limit',
+                                        doc='pv lower warning limit')
+    upper_warning_limit = _arg_property('upper_warning_limit',
+                                        doc='pv upper warning limit')
+    lower_ctrl_limit = _arg_property('lower_ctrl_limit',
+                                     doc='pv lower ctrl limit')
+    upper_ctrl_limit = _arg_property('upper_ctrl_limit',
+                                     doc='pv upper ctrl limit')
