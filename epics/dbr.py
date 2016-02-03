@@ -262,55 +262,56 @@ class ctrl_double(_ctrl_lims(double_t), _ctrl_units):
     _fields_ = [('value', double_t)]
 
 
-NumpyMap = {ChType.INT: np.int16,
-            ChType.FLOAT: np.float32,
-            ChType.ENUM: np.uint16,
-            ChType.CHAR: np.uint8,
-            ChType.LONG: np.int32,
-            ChType.DOUBLE: np.float64
-            }
+_numpy_map = {
+    ChType.INT: np.int16,
+    ChType.FLOAT: np.float32,
+    ChType.ENUM: np.uint16,
+    ChType.CHAR: np.uint8,
+    ChType.LONG: np.int32,
+    ChType.DOUBLE: np.float64
+}
 
 
 # map of Epics DBR types to ctypes types
-Map = {ChType.STRING: string_t,
-       ChType.INT: short_t,
-       ChType.FLOAT: float_t,
-       ChType.ENUM: ushort_t,
-       ChType.CHAR: ubyte_t,
-       ChType.LONG: int_t,
-       ChType.DOUBLE: double_t,
+_ftype_to_ctype = {
+    ChType.STRING: string_t,
+    ChType.INT: short_t,
+    ChType.FLOAT: float_t,
+    ChType.ENUM: ushort_t,
+    ChType.CHAR: ubyte_t,
+    ChType.LONG: int_t,
+    ChType.DOUBLE: double_t,
 
-       # TODO: these right?
-       ChType.STS_STRING: string_t,
-       ChType.STS_INT: short_t,
-       ChType.STS_FLOAT: float_t,
-       ChType.STS_ENUM: ushort_t,
-       ChType.STS_CHAR: ubyte_t,
-       ChType.STS_LONG: int_t,
-       ChType.STS_DOUBLE: double_t,
+    ChType.STS_STRING: string_t,
+    ChType.STS_INT: short_t,
+    ChType.STS_FLOAT: float_t,
+    ChType.STS_ENUM: ushort_t,
+    ChType.STS_CHAR: ubyte_t,
+    ChType.STS_LONG: int_t,
+    ChType.STS_DOUBLE: double_t,
 
-       ChType.TIME_STRING: time_string,
-       ChType.TIME_INT: time_short,
-       ChType.TIME_SHORT: time_short,
-       ChType.TIME_FLOAT: time_float,
-       ChType.TIME_ENUM: time_enum,
-       ChType.TIME_CHAR: time_char,
-       ChType.TIME_LONG: time_long,
-       ChType.TIME_DOUBLE: time_double,
+    ChType.TIME_STRING: time_string,
+    ChType.TIME_INT: time_short,
+    ChType.TIME_SHORT: time_short,
+    ChType.TIME_FLOAT: time_float,
+    ChType.TIME_ENUM: time_enum,
+    ChType.TIME_CHAR: time_char,
+    ChType.TIME_LONG: time_long,
+    ChType.TIME_DOUBLE: time_double,
 
-       # Note: there is no ctrl string in the C definition
-       ChType.CTRL_STRING: time_string,
-       ChType.CTRL_SHORT: ctrl_short,
-       ChType.CTRL_INT: ctrl_short,
-       ChType.CTRL_FLOAT: ctrl_float,
-       ChType.CTRL_ENUM: ctrl_enum,
-       ChType.CTRL_CHAR: ctrl_char,
-       ChType.CTRL_LONG: ctrl_long,
-       ChType.CTRL_DOUBLE: ctrl_double
-       }
+    # Note: there is no ctrl string in the C definition
+    ChType.CTRL_STRING: time_string,
+    ChType.CTRL_SHORT: ctrl_short,
+    ChType.CTRL_INT: ctrl_short,
+    ChType.CTRL_FLOAT: ctrl_float,
+    ChType.CTRL_ENUM: ctrl_enum,
+    ChType.CTRL_CHAR: ctrl_char,
+    ChType.CTRL_LONG: ctrl_long,
+    ChType.CTRL_DOUBLE: ctrl_double
+}
 
 
-NativeMap = {
+_native_map = {
     ChType.STRING: ChType.STRING,
     ChType.INT: ChType.INT,
     ChType.FLOAT: ChType.FLOAT,
@@ -350,7 +351,8 @@ NativeMap = {
 
 def native_type(ftype):
     "return native field type from TIME or CTRL variant"
-    return NativeMap[ftype]
+    global _native_map
+    return _native_map[ftype]
 
 
 def promote_type(ftype, use_time=False, use_ctrl=False):
@@ -381,18 +383,20 @@ def cast_args(args):
     value in the list will be None.
     """
     ftype = args.type
+    ftype_c = _ftype_to_ctype[ftype]
     ntype = native_type(ftype)
     if ftype != ntype:
         native_start = args.raw_dbr + value_offset[ftype]
+        ntype_c = _ftype_to_ctype[ntype]
         return [ctypes.cast(args.raw_dbr,
-                            ctypes.POINTER(Map[ftype])).contents,
+                            ctypes.POINTER(ftype_c)).contents,
                 ctypes.cast(native_start,
-                            ctypes.POINTER(args.count * Map[ntype])).contents
+                            ctypes.POINTER(args.count * ntype_c)).contents
                 ]
     else:
         return [None,
                 ctypes.cast(args.raw_dbr,
-                            ctypes.POINTER(args.count * Map[ftype])).contents
+                            ctypes.POINTER(args.count * ftype_c)).contents
                 ]
 
 

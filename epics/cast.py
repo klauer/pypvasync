@@ -31,9 +31,9 @@ def scan_string(data, count):
 def array_cast(data, count, ntype, use_numpy):
     "cast ctypes array to numpy array (if using numpy)"
     if use_numpy:
-        dtype = dbr.NumpyMap.get(ntype, None)
+        dtype = dbr._numpy_map.get(ntype, None)
         if dtype is not None:
-            out = numpy.empty(shape=(count,), dtype=dbr.NumpyMap[ntype])
+            out = numpy.empty(shape=(count,), dtype=dbr._numpy_map[ntype])
             ctypes.memmove(out.ctypes.data, data, out.nbytes)
         else:
             out = numpy.ctypeslib.as_array(deepcopy(data))
@@ -118,7 +118,7 @@ def get_put_info(chid, value):
             value = NULLCHAR
         value = ascii_string(value)
 
-    data = (count * dbr.Map[ftype])()
+    data = (count * dbr._ftype_to_ctype[ftype])()
     if ftype == ChType.STRING:
         if count == 1:
             data[0].value = value
@@ -201,5 +201,3 @@ def cast_monitor_args(args):
     value = unpack(args.chid, value, count=args.count, ftype=args.type)
     kwds['value'] = value
     return kwds
-
-
