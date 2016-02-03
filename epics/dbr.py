@@ -6,14 +6,45 @@
 # Epics Database Records (DBR) Constants and Definitions
 #  most of the code here is copied from db_access.h
 #
-""" constants and declaration of data types for Epics database records
-This is mostly copied from CA header files
-"""
+
 import ctypes
 import numpy as np
 from enum import IntEnum
 
 from .utils import PY64_WINDOWS
+
+from ctypes import c_short as short_t
+from ctypes import c_ushort as ushort_t
+from ctypes import c_int as int_t
+from ctypes import c_uint as uint_t
+from ctypes import c_long as long_t
+from ctypes import c_float as float_t
+from ctypes import c_double as double_t
+from ctypes import c_byte as byte_t
+from ctypes import c_ubyte as ubyte_t
+from ctypes import c_char as char_t
+from ctypes import c_void_p as void_p
+
+if PY64_WINDOWS:
+    # Note that Windows needs to be told that chid is 8 bytes for 64-bit,
+    # except that Python2 is very weird -- using a 4byte chid for 64-bit, but
+    # needing a 1 byte padding!
+    from ctypes import c_int64 as chid_t
+else:
+    from ctypes import c_long as chid_t
+
+MAX_STRING_SIZE = 40
+MAX_UNITS_SIZE = 8
+MAX_ENUM_STRING_SIZE = 26
+MAX_ENUMS = 16
+
+# EPICS2UNIX_EPOCH = 631173600.0 - time.timezone
+EPICS2UNIX_EPOCH = 631152000.0
+
+string_t = ctypes.c_char * MAX_STRING_SIZE
+# value_offset is set when the CA library connects, indicating the byte offset
+# into the response where the first native type element is
+value_offset = None
 
 
 # EPICS Constants
@@ -70,6 +101,13 @@ class ChannelType(IntEnum):
     CTRL_DOUBLE = 34
 
 
+class SubscriptionEnum(IntEnum):
+    # create_subscription mask constants
+    DBE_VALUE = 1
+    DBE_LOG = 2
+    DBE_ALARM = 4
+    DBE_PROPERTY = 8
+
 ChType = ChannelType
 
 
@@ -88,53 +126,7 @@ control_types = (ChType.CTRL_STRING, ChType.CTRL_INT, ChType.CTRL_SHORT,
 char_types = (ChType.CHAR, ChType.TIME_CHAR, ChType.CTRL_CHAR)
 native_float_types = (ChType.FLOAT, ChType.DOUBLE)
 
-MAX_STRING_SIZE = 40
-MAX_UNITS_SIZE = 8
-MAX_ENUM_STRING_SIZE = 26
-MAX_ENUMS = 16
 
-# EPICS2UNIX_EPOCH = 631173600.0 - time.timezone
-EPICS2UNIX_EPOCH = 631152000.0
-
-
-class SubscriptionEnum(IntEnum):
-    # create_subscription mask constants
-    DBE_VALUE = 1
-    DBE_LOG = 2
-    DBE_ALARM = 4
-    DBE_PROPERTY = 8
-
-
-chid_t = ctypes.c_long
-
-# Note that Windows needs to be told that chid is 8 bytes for 64-bit, except
-# that Python2 is very weird -- using a 4byte chid for 64-bit, but needing a 1
-# byte padding!
-if PY64_WINDOWS:
-    chid_t = ctypes.c_int64
-
-short_t = ctypes.c_short
-ushort_t = ctypes.c_ushort
-int_t = ctypes.c_int
-uint_t = ctypes.c_uint
-long_t = ctypes.c_long
-ulong_t = ctypes.c_ulong
-float_t = ctypes.c_float
-double_t = ctypes.c_double
-byte_t = ctypes.c_byte
-ubyte_t = ctypes.c_ubyte
-char_t = ctypes.c_char
-char_p = ctypes.c_char_p
-void_p = ctypes.c_void_p
-py_obj = ctypes.py_object
-string_t = ctypes.c_char * MAX_STRING_SIZE
-
-# value_offset is set when the CA library connects, indicating the byte offset
-# into the response where the first native type element is
-value_offset = None
-
-
-# extended DBR types:
 class TimeStamp(ctypes.Structure):
     "emulate epics timestamp"
     _fields_ = [('secs', uint_t),
@@ -264,6 +256,22 @@ class ctrl_double(_ctrl_lims(double_t), _ctrl_units):
     _fields_ = [('value', double_t)]
 
 
+class event_handler_args(ctypes.Structure):
+    "event handler arguments"
+    _fields_ = [('usr', ctypes.py_object),
+                ('chid', chid_t),
+                ('type', long_t),
+                ('count', long_t),
+                ('raw_dbr', void_p),
+                ('status', int_t)]
+
+
+class connection_args(ctypes.Structure):
+    "connection arguments"
+    _fields_ = [('chid', chid_t),
+                ('op', long_t)]
+
+
 _numpy_map = {
     ChType.INT: np.int16,
     ChType.FLOAT: np.float32,
@@ -373,19 +381,3 @@ def promote_type(ftype, use_time=False, use_ctrl=False):
     if ftype == ChType.CTRL_STRING:
         return ChType.TIME_STRING
     return ftype
-
-
-class event_handler_args(ctypes.Structure):
-    "event handler arguments"
-    _fields_ = [('usr', ctypes.py_object),
-                ('chid', chid_t),
-                ('type', long_t),
-                ('count', long_t),
-                ('raw_dbr', void_p),
-                ('status', int_t)]
-
-
-class connection_args(ctypes.Structure):
-    "connection arguments"
-    _fields_ = [('chid', chid_t),
-                ('op', long_t)]
