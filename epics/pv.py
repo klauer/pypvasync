@@ -17,7 +17,8 @@ from .utils import is_string
 
 _PVcache_ = {}
 
-def get_pv(pvname, form='time',  connect=False,
+
+def get_pv(pvname, form='time', connect=False,
            context=None, timeout=5.0, **kws):
     """get PV from PV cache or create one if needed.
 
@@ -49,11 +50,12 @@ def get_pv(pvname, form='time',  connect=False,
         thispv.wait_for_connection()
         while not thispv.connected:
             ca.poll()
-            if time.time()-start_time > timeout:
+            if time.time() - start_time > timeout:
                 break
         if not thispv.connected:
             print('cannot connect to %s' % pvname)
     return thispv
+
 
 def fmt_time(tstamp=None):
     "simple formatter for time values"
@@ -62,7 +64,7 @@ def fmt_time(tstamp=None):
     tstamp, frac = divmod(tstamp, 1)
     return "%s.%5.5i" % (time.strftime("%Y-%m-%d %H:%M:%S",
                                        time.localtime(tstamp)),
-                         round(1.e5*frac))
+                         round(1.e5 * frac))
 
 
 class PV(object):
@@ -87,7 +89,7 @@ class PV(object):
 
     _fmtsca = "<PV '%(pvname)s', count=%(count)i, type=%(typefull)s, access=%(access)s>"
     _fmtarr = "<PV '%(pvname)s', count=%(count)i/%(nelm)i, type=%(typefull)s, access=%(access)s>"
-    _fields = ('pvname',  'value',  'char_value',  'status',  'ftype',  'chid',
+    _fields = ('pvname', 'value', 'char_value', 'status', 'ftype', 'chid',
                'host', 'count', 'access', 'write_access', 'read_access',
                'severity', 'timestamp', 'precision', 'units', 'enum_strs',
                'upper_disp_limit', 'lower_disp_limit', 'upper_alarm_limit',
@@ -99,17 +101,17 @@ class PV(object):
                  connection_callback=None,
                  connection_timeout=None):
 
-        self.pvname     = pvname.strip()
-        self.form       = form.lower()
-        self.verbose    = verbose
+        self.pvname = pvname.strip()
+        self.form = form.lower()
+        self.verbose = verbose
         self.auto_monitor = auto_monitor
-        self.ftype      = None
-        self.connected  = False
+        self.ftype = None
+        self.connected = False
         self.connection_timeout = connection_timeout
-        self._args      = {}.fromkeys(self._fields)
+        self._args = {}.fromkeys(self._fields)
         self._args['pvname'] = self.pvname
         self._args['count'] = -1
-        self._args['nelm']  = -1
+        self._args['nelm'] = -1
         self._args['type'] = 'unknown'
         self._args['typefull'] = 'unknown'
         self._args['access'] = 'unknown'
@@ -118,7 +120,7 @@ class PV(object):
         if connection_callback is not None:
             self.connection_callbacks = [connection_callback]
 
-        self.callbacks  = {}
+        self.callbacks = {}
         self._monref = None  # holder of data returned from create_subscription
         self._conn_started = False
         if isinstance(callback, (tuple, list)):
@@ -136,9 +138,9 @@ class PV(object):
         self._args['chid'] = ca.create_channel(self.pvname,
                                                callback=self.__on_connect)
         self.chid = self._args['chid']
-        self.ftype  = ca.promote_type(self.chid,
-                                      use_ctrl= self.form == 'ctrl',
-                                      use_time= self.form == 'time')
+        self.ftype = ca.promote_type(self.chid,
+                                     use_ctrl=self.form == 'ctrl',
+                                     use_time=self.form == 'time')
         self._args['type'] = dbr.Name(self.ftype).lower()
 
         pvid = (self.pvname, self.form, self.context)
@@ -146,7 +148,8 @@ class PV(object):
             _PVcache_[pvid] = self
 
     def force_connect(self, pvname=None, chid=None, conn=True, **kws):
-        if chid is None: chid = self.chid
+        if chid is None:
+            chid = self.chid
         if isinstance(chid, ctypes.c_long):
             chid = chid.value
         self._args['chid'] = self.chid = chid
@@ -157,7 +160,6 @@ class PV(object):
         # occassionally chid is still None (ie if a second PV is created
         # while __on_connect is still pending for the first one.)
         # Just return here, and connection will happen later
-        t0 = time.time()
         if self.chid is None and chid is None:
             ca.poll(5.e-4)
             return
@@ -169,15 +171,15 @@ class PV(object):
             except ca.ChannelAccessException:
                 time.sleep(0.025)
                 count = ca.element_count(self.chid)
-            self._args['count']  = count
-            self._args['nelm']  = count
-            self._args['host']   = ca.host_name(self.chid)
+            self._args['count'] = count
+            self._args['nelm'] = count
+            self._args['host'] = ca.host_name(self.chid)
             self._args['access'] = ca.access(self.chid)
             self._args['read_access'] = (1 == ca.read_access(self.chid))
             self._args['write_access'] = (1 == ca.write_access(self.chid))
-            self.ftype  = ca.promote_type(self.chid,
-                                          use_ctrl= self.form == 'ctrl',
-                                          use_time= self.form == 'time')
+            self.ftype = ca.promote_type(self.chid,
+                                         use_ctrl=self.form == 'ctrl',
+                                         use_time=self.form == 'time')
             _ftype_ = dbr.Name(self.ftype).lower()
             self._args['type'] = _ftype_
             self._args['typefull'] = _ftype_
@@ -194,10 +196,12 @@ class PV(object):
                 if isinstance(self.auto_monitor, int):
                     mask = self.auto_monitor
                 self._monref = ca.create_subscription(self.chid,
-                                         use_ctrl=(self.form == 'ctrl'),
-                                         use_time=(self.form == 'time'),
-                                         callback=self.__on_changes,
-                                         mask=mask)
+                                                      use_ctrl=(
+                                                          self.form == 'ctrl'),
+                                                      use_time=(
+                                                          self.form == 'time'),
+                                                      callback=self.__on_changes,
+                                                      mask=mask)
 
         for conn_cb in self.connection_callbacks:
             if hasattr(conn_cb, '__call__'):
@@ -228,7 +232,7 @@ class PV(object):
                     timeout = ca.DEFAULT_CONNECTION_TIMEOUT
             start_time = time.time()
             while (not self.connected and
-                   time.time()-start_time < timeout):
+                   time.time() - start_time < timeout):
                 ca.poll()
         return self.connected
 
@@ -278,9 +282,9 @@ class PV(object):
             self.get_ctrlvars()
 
         if ((not use_monitor) or
-            (not self.auto_monitor) or
-            (self._args['value'] is None) or
-            (count is not None and count > len(self._args['value']))):
+                (not self.auto_monitor) or
+                (self._args['value'] is None) or
+                (count is not None and count > len(self._args['value']))):
             self._args['value'] = ca.get(self.chid, ftype=self.ftype,
                                          count=count, timeout=timeout,
                                          as_numpy=as_numpy)
@@ -293,12 +297,12 @@ class PV(object):
         if count is None:
             count = len(val)
         if (as_numpy and ca.HAS_NUMPY and
-            not isinstance(val, ca.numpy.ndarray)):
+                not isinstance(val, ca.numpy.ndarray)):
             if count == 1:
                 val = [val]
             val = ca.numpy.array(val)
         elif (as_numpy and ca.HAS_NUMPY and count == 1 and
-            not isinstance(val, ca.numpy.ndarray)):
+                not isinstance(val, ca.numpy.ndarray)):
             val = ca.numpy.array([val])
         elif (not as_numpy and ca.HAS_NUMPY and
               isinstance(val, ca.numpy.ndarray)):
@@ -318,7 +322,7 @@ class PV(object):
             return None
 
         if (self.ftype in (dbr.ENUM, dbr.TIME_ENUM, dbr.CTRL_ENUM) and
-            is_string(value)):
+                is_string(value)):
             if self._args['enum_strs'] is None:
                 self.get_ctrlvars()
             if value in self._args['enum_strs']:
@@ -354,11 +358,11 @@ class PV(object):
         if ntype == dbr.CHAR and self.count < ca.AUTOMONITOR_MAXLENGTH:
             if isinstance(val, ca.numpy.ndarray):
                 val = val.tolist()
-            elif self.count==1: # handles single character in waveform
+            elif self.count == 1:  # handles single character in waveform
                 val = [val]
             val = list(val)
             if 0 in val:
-                firstnull  = val.index(0)
+                firstnull = val.index(0)
             else:
                 firstnull = len(val)
             try:
@@ -368,7 +372,7 @@ class PV(object):
             self._args['char_value'] = cval
             return cval
 
-        cval  = repr(val)
+        cval = repr(val)
         if self.count > 1:
             cval = '<array size=%d, type=%s>' % (len(val),
                                                  dbr.Name(ftype).lower())
@@ -377,10 +381,10 @@ class PV(object):
                 self.get_ctrlvars()
             try:
                 prec = self._args['precision']
-                fmt  = "%%.%if"
+                fmt = "%%.%if"
                 if 4 < abs(int(log10(abs(val + 1.e-9)))):
                     fmt = "%%.%ig"
-                cval = (fmt %  prec) % val
+                cval = (fmt % prec) % val
             except (ValueError, TypeError, ArithmeticError):
                 cval = str(val)
         elif ntype == dbr.ENUM:
@@ -388,7 +392,7 @@ class PV(object):
                 self.get_ctrlvars()
             try:
                 cval = self._args['enum_strs'][val]
-            except (TypeError, KeyError,  IndexError):
+            except (TypeError, KeyError, IndexError):
                 cval = str(val)
 
         self._args['char_value'] = cval
@@ -410,20 +414,19 @@ class PV(object):
         self._args.update(kwds)
         return kwds
 
-
     def __on_changes(self, value=None, **kwd):
         """internal callback function: do not overwrite!!
         To have user-defined code run when the PV value changes,
         use add_callback()
         """
         self._args.update(kwd)
-        self._args['value']  = value
+        self._args['value'] = value
         self._args['timestamp'] = kwd.get('timestamp', time.time())
         self._set_charval(self._args['value'], call_ca=False)
         if self.verbose:
             now = fmt_time(self._args['timestamp'])
-            print('%s: %s (%s)'% (self.pvname,
-                                     self._args['char_value'], now))
+            print('%s: %s (%s)' % (self.pvname,
+                                   self._args['char_value'], now))
         self.run_callbacks()
 
     def run_callbacks(self):
@@ -504,9 +507,9 @@ class PV(object):
             mod, xtype = xtype.split('_')
 
         fmt = '%i'
-        if   xtype in ('float','double'):
+        if xtype in ('float', 'double'):
             fmt = '%g'
-        elif xtype in ('string','char'):
+        elif xtype in ('string', 'char'):
             fmt = '%s'
 
         self._set_charval(self._args['value'], call_ca=False)
@@ -515,7 +518,7 @@ class PV(object):
             val = self._args['value']
             out.append('   value      = %s' % fmt % val)
         else:
-            ext  = {True:'...', False:''}[self.count > 10]
+            ext = {True: '...', False: ''}[self.count > 10]
             elems = range(min(5, self.count))
             try:
                 aval = [fmt % self._args['value'][i] for i in elems]
@@ -537,9 +540,9 @@ class PV(object):
                     elif nam == 'char_value':
                         att = "'%s'" % att
                     if len(nam) < 12:
-                        out.append('   %.11s= %s' % (nam+' '*12, str(att)))
+                        out.append('   %.11s= %s' % (nam + ' ' * 12, str(att)))
                     else:
-                        out.append('   %.20s= %s' % (nam+' '*20, str(att)))
+                        out.append('   %.20s= %s' % (nam + ' ' * 20, str(att)))
         if xtype == 'enum':  # list enum strings
             out.append('   enum strings: ')
             for index, nam in enumerate(self.enum_strs):
@@ -548,12 +551,12 @@ class PV(object):
         if self._monref is not None:
             msg = 'PV is internally monitored'
             out.append('   %s, with %i user-defined callbacks:' % (msg,
-                                                         len(self.callbacks)))
+                                                                   len(self.callbacks)))
             if len(self.callbacks) > 0:
                 for nam in sorted(self.callbacks.keys()):
                     cback = self.callbacks[nam][0]
                     out.append('      %s in file %s' % (cback.func_name,
-                                        cback.func_code.co_filename))
+                                                        cback.func_code.co_filename))
         else:
             out.append('   PV is NOT internally monitored')
         out.append('=============================')
@@ -609,7 +612,7 @@ class PV(object):
     def count(self):
         """count (number of elements). For array data and later EPICS versions,
         this is equivalent to the .NORD field.  See also 'nelm' property"""
-        if self._args['count'] >=0:
+        if self._args['count'] >= 0:
             return self._args['count']
         else:
             return self._getarg('count')
@@ -730,7 +733,7 @@ class PV(object):
     def __eq__(self, other):
         "test for equality"
         try:
-            return (self.chid  == other.chid)
+            return (self.chid == other.chid)
         except AttributeError:
             return False
 
@@ -754,7 +757,7 @@ class PV(object):
             del evid
             try:
                 self._monref = None
-                self._args   = {}.fromkeys(self._fields)
+                self._args = {}.fromkeys(self._fields)
             except:
                 pass
 
