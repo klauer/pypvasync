@@ -23,8 +23,8 @@ class CAContextHandler:
     # Default mask for subscriptions (means update on value changes exceeding
     # MDEL, and on alarm level changes.) Other option is DBE_LOG for archive
     # changes (ie exceeding ADEL)
-    default_mask = (dbr.SubscriptionEnum.DBE_VALUE |
-                    dbr.SubscriptionEnum.DBE_ALARM)
+    default_mask = (dbr.SubscriptionType.DBE_VALUE |
+                    dbr.SubscriptionType.DBE_ALARM)
 
     def __init__(self, ctx):
         self._sub_lock = threading.RLock()
