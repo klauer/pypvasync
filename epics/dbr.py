@@ -10,19 +10,9 @@
 This is mostly copied from CA header files
 """
 import ctypes
-import os
-import sys
-from platform import architecture
+import numpy as np
 
-HAS_NUMPY = False
-try:
-    import numpy
-    HAS_NUMPY = True
-except ImportError:
-    pass
-
-PY64_WINDOWS =  (os.name == 'nt' and architecture()[0].startswith('64'))
-PY_MAJOR, PY_MINOR = sys.version_info[:2]
+from .utils import PY64_WINDOWS
 
 # EPICS Constants
 ECA_NORMAL = 1
@@ -82,12 +72,12 @@ DBE_PROPERTY = 8
 
 chid_t   = ctypes.c_long
 
-# Note that Windows needs to be told that chid is 8 bytes for 64-bit, 
-# except that Python2 is very weird -- using a 4byte chid for 64-bit, 
-# but needing a 1 byte padding! 
+# Note that Windows needs to be told that chid is 8 bytes for 64-bit,
+# except that Python2 is very weird -- using a 4byte chid for 64-bit,
+# but needing a 1 byte padding!
 if PY64_WINDOWS and PY_MAJOR > 2:
     chid_t = ctypes.c_int64
-	
+
 short_t  = ctypes.c_short
 ushort_t = ctypes.c_ushort
 int_t    = ctypes.c_int
@@ -109,112 +99,129 @@ value_offset = None
 # extended DBR types:
 class TimeStamp(ctypes.Structure):
     "emulate epics timestamp"
-    _fields_ = [('secs', uint_t), ('nsec', uint_t)]
+    _fields_ = [('secs', uint_t),
+                ('nsec', uint_t)]
 
-_STAT_SEV    = (('status', short_t), ('severity', short_t))
-_STAT_SEV_TS = (('status', short_t), ('severity', short_t),
-                ('stamp', TimeStamp))
-_UNITS       = ('units', char_t * MAX_UNITS_SIZE)
+
+class _stat_sev(ctypes.Structure):
+    _fields_ = [('status', short_t),
+                ('severity', short_t),
+                ]
+
+
+class _stat_sev_units(_stat_sev):
+    _fields_ = [('units', char_t * MAX_UNITS_SIZE),
+                ]
+
+
+class _stat_sev_ts(ctypes.Structure):
+    _fields_ = [('status', short_t),
+                ('severity', short_t),
+                ('stamp', TimeStamp)
+                ]
 
 def make_unixtime(stamp):
     "UNIX timestamp (seconds) from Epics TimeStamp structure"
     return (EPICS2UNIX_EPOCH + stamp.secs + 1.e-6*int(1.e-3*stamp.nsec))
 
 
-class time_string(ctypes.Structure):
+class time_string(_stat_sev_ts):
     "dbr time string"
-    _fields_ = list(_STAT_SEV_TS) + [('value', MAX_STRING_SIZE*char_t)]
+    _fields_ = [('value', MAX_STRING_SIZE*char_t)]
 
 
-class time_short(ctypes.Structure):
+class time_short(_stat_sev_ts):
     "dbr time short"
-    _fields_ = list(_STAT_SEV_TS) + [('RISC_pad',  short_t),
-                                     ('value',     short_t)]
+    _fields_ = [('RISC_pad', short_t),
+                ('value', short_t)]
 
-class time_float(ctypes.Structure):
+class time_float(_stat_sev_ts):
     "dbr time float"
-    _fields_ = list(_STAT_SEV_TS) + [('value',  float_t)]
+    _fields_ =  [('value', float_t)]
 
-class time_enum(ctypes.Structure):
+class time_enum(_stat_sev_ts):
     "dbr time enum"
-    _fields_ = list(_STAT_SEV_TS) + [('RISC_pad',  short_t),
-                                     ('value',    ushort_t)]
+    _fields_ = [('RISC_pad', short_t),
+                ('value', ushort_t)]
 
-class time_char(ctypes.Structure):
+class time_char(_stat_sev_ts):
     "dbr time char"
-    _fields_ = list(_STAT_SEV_TS) + [('RISC_pad0', short_t),
-                                     ('RISC_pad1', byte_t),
-                                     ('value',     byte_t)]
+    _fields_ = [('RISC_pad0', short_t),
+                ('RISC_pad1', byte_t),
+                ('value', byte_t)]
 
-class time_long(ctypes.Structure):
+class time_long(_stat_sev_ts):
     "dbr time long"
-    _fields_ = list(_STAT_SEV_TS) + [('value', int_t)]
+    _fields_ = [('value', int_t)]
 
 
-class time_double(ctypes.Structure):
+class time_double(_stat_sev_ts):
     "dbr time double"
-    _fields_ = list(_STAT_SEV_TS) + [('RISC_pad', int_t),
-                                     ('value',    double_t)]
+    _fields_ = [('RISC_pad', int_t),
+                ('value', double_t)]
 
-# DBR types with full control and graphical fields
-# yes, this strange order is as in db_access.h!!!
-ctrl_limits = ('upper_disp_limit',   'lower_disp_limit',
-               'upper_alarm_limit',  'upper_warning_limit',
-               'lower_warning_limit','lower_alarm_limit',
-               'upper_ctrl_limit',   'lower_ctrl_limit')
+def _ctrl_lims(t):
+    # DBR types with full control and graphical fields
+    # yes, this strange order is as in db_access.h!!!
 
-def _gen_ctrl_lims(t=short_t):
-    "create types for control limits"
-    return  [(s, t) for s in  ctrl_limits]
+    class ctrl_lims(ctypes.Structure):
+        _fields_ = [('upper_disp_limit', t),
+                    ('lower_disp_limit', t),
+                    ('upper_alarm_limit', t),
+                    ('upper_warning_limit', t),
+                    ('lower_warning_limit', t),
+                    ('lower_alarm_limit', t),
+                    ('upper_ctrl_limit', t),
+                    ('lower_ctrl_limit', t),
+                    ]
 
-class ctrl_enum(ctypes.Structure):
+    return ctrl_lims
+
+
+class ctrl_enum(_stat_sev):
     "dbr ctrl enum"
-    _fields_ = list(_STAT_SEV)
-    _fields_.extend([ ('no_str', short_t),
-                      ('strs', (char_t * MAX_ENUM_STRING_SIZE) * MAX_ENUMS),
-                      ('value',    ushort_t)])
+    _fields_ = [('no_str', short_t),
+                ('strs', (char_t * MAX_ENUM_STRING_SIZE) * MAX_ENUMS),
+                ('value', ushort_t)
+                ]
 
-class ctrl_short(ctypes.Structure):
+class ctrl_short(_ctrl_lims(short_t), _stat_sev_units):
     "dbr ctrl short"
-    _fields_ = list(_STAT_SEV) + [_UNITS] +  _gen_ctrl_lims(t=short_t)
-    _fields_.extend([('value', short_t )])
+    _fields_ = [('value', short_t)]
 
-class ctrl_char(ctypes.Structure):
+class ctrl_char(_ctrl_lims(byte_t), _stat_sev_units):
     "dbr ctrl long"
-    _fields_ = list(_STAT_SEV) +[_UNITS] +  _gen_ctrl_lims(t=byte_t)
-    _fields_.extend([('RISC_pad', byte_t), ('value', ubyte_t)])
+    _fields_ = [('RISC_pad', byte_t),
+                ('value', ubyte_t)
+                ]
 
-class ctrl_long(ctypes.Structure):
+class ctrl_long(_ctrl_lims(int_t), _stat_sev_units):
     "dbr ctrl long"
-    _fields_ = list(_STAT_SEV) +[_UNITS] +  _gen_ctrl_lims(t=int_t)
-    _fields_.extend([('value', int_t)])
+    _fields_ = [('value', int_t )]
 
-class ctrl_float(ctypes.Structure):
+
+class _ctrl_units(_stat_sev):
+    _fields_ = [('precision', short_t),
+                ('RISC_pad', short_t),
+                ('units', char_t * MAX_UNITS_SIZE),
+                ]
+
+class ctrl_float(_ctrl_lims(float_t), _ctrl_units):
     "dbr ctrl float"
-    _fields_ = list(_STAT_SEV)
-    _fields_.extend([('precision',   short_t),
-                     ('RISC_pad',    short_t)] + [_UNITS])
-    _fields_.extend( _gen_ctrl_lims(t=float_t) )
-    _fields_.extend([('value', float_t)])
+    _fields_ = [('value', float_t)]
 
 
-class ctrl_double(ctypes.Structure):
+class ctrl_double(_ctrl_lims(double_t), _ctrl_units):
     "dbr ctrl double"
-    _fields_ = list(_STAT_SEV)
-    _fields_.extend([('precision',   short_t),
-                     ('RISC_pad',    short_t)] + [_UNITS])
-    _fields_.extend( _gen_ctrl_lims(t=double_t) )
-    _fields_.extend([('value',       double_t)])
+    _fields_ = [('value', double_t)]
 
 
-NP_Map = {}
-if HAS_NUMPY:
-    NP_Map = {INT:    numpy.int16,
-              FLOAT:  numpy.float32,
-              ENUM:   numpy.uint16,
-              CHAR:   numpy.uint8,
-              LONG:   numpy.int32,
-              DOUBLE: numpy.float64}
+NP_Map = {INT: np.int16,
+          FLOAT: np.float32,
+          ENUM: np.uint16,
+          CHAR: np.uint8,
+          LONG: np.int32,
+          DOUBLE: np.float64}
 
 
 # map of Epics DBR types to ctypes types
@@ -316,26 +323,19 @@ def cast_args(args):
                 ctypes.cast(args.raw_dbr,
                             ctypes.POINTER(args.count * Map[ftype])).contents
                 ]
-def make_callback(func, args):
-    """ make callback function"""
-    # note that ctypes.POINTER is needed for 64-bit Python on Windows
-    if PY64_WINDOWS:
-        args = ctypes.POINTER(args)
-    return ctypes.CFUNCTYPE(None, args)(func)
-
 
 class event_handler_args(ctypes.Structure):
     "event handler arguments"
     _fields_ = [('usr',     ctypes.py_object),
                 ('chid',    chid_t),
-                ('type',    long_t), 
+                ('type',    long_t),
                 ('count',   long_t),
                 ('raw_dbr', void_p),
                 ('status',  int_t)]
 
 class connection_args(ctypes.Structure):
     "connection arguments"
-    _fields_ = [('chid', chid_t), 
+    _fields_ = [('chid', chid_t),
                 ('op', long_t)]
 
 if PY64_WINDOWS and PY_MAJOR == 2:
@@ -345,14 +345,14 @@ if PY64_WINDOWS and PY_MAJOR == 2:
         _fields_ = [('usr',     ctypes.py_object),
                     ('chid',    chid_t),
                     ('_pad_',   ctypes.c_int8),
-                    ('type',    ctypes.c_int32), 
+                    ('type',    ctypes.c_int32),
                     ('count',   ctypes.c_int32),
                     ('raw_dbr', void_p),
                     ('status',  ctypes.c_int32)]
 
     class connection_args(ctypes.Structure):
         "connection arguments"
-        _fields_ = [('chid', chid_t), 
+        _fields_ = [('chid', chid_t),
                     ('_pad_',ctypes.c_int8),
                     ('op',   long_t)]
 
