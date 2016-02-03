@@ -576,15 +576,6 @@ def _onPutEvent(args, **kwds):
     # ctypes.pythonapi.Py_DecRef(args.usr)
 
 
-# create global reference to these callbacks
-
-
-_CB_EVENT = _make_callback(_onMonitorEvent, dbr.event_handler_args)
-
-# Now we're ready to wrap libca functions
-#
-###
-
 # contexts
 
 
@@ -1315,7 +1306,8 @@ def create_subscription(chid, use_time=False, use_ctrl=False,
     evid = ctypes.c_void_p()
     # poll()
     ret = libca.ca_create_subscription(ftype, 0, chid, mask,
-                                       _CB_EVENT, uarg, ctypes.byref(evid))
+                                       _onMonitorEvent.ca_callback, uarg,
+                                       ctypes.byref(evid))
     PySEVCHK('create_subscription', ret)
 
     # poll()

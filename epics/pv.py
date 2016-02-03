@@ -132,8 +132,8 @@ class PV(object):
 
         # subscribe should be smart enough to run the subscription if the
         # callback happens inbetween
-        self._context.subscribe(sig='connection', func=self.__on_connect,
-                                chid=self.chid)
+        self._context.subscribe_connect(func=self.__on_connect,
+                                        chid=self.chid)
 
         self.ftype = ca.promote_type(self.chid,
                                      use_ctrl=self.form == 'ctrl',

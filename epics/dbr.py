@@ -324,6 +324,15 @@ def Name(ftype, reverse=False):
          LONG: 'LONG',
          DOUBLE: 'DOUBLE',
 
+         STS_STRING: 'STS_STRING',
+         STS_SHORT: 'STS_SHORT',
+         STS_INT: 'STS_INT',
+         STS_FLOAT: 'STS_FLOAT',
+         STS_ENUM: 'STS_ENUM',
+         STS_CHAR: 'STS_CHAR',
+         STS_LONG: 'STS_LONG',
+         STS_DOUBLE: 'STS_DOUBLE',
+
          TIME_STRING: 'TIME_STRING',
          TIME_SHORT: 'TIME_SHORT',
          TIME_FLOAT: 'TIME_FLOAT',

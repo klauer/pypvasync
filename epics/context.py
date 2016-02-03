@@ -53,9 +53,15 @@ class CAContextHandler:
 
     def subscribe(self, sig, func, chid, *, oneshot=False):
         with self._sub_lock:
+            cid = self._cbreg.subscribe(sig=sig, chid=chid, func=func,
+                                        oneshot=oneshot)
+            return cid
+
+    def subscribe_connect(self, func, chid, *, oneshot=False):
+        with self._sub_lock:
             # subscribe to connection, but it's already connected
             # so run the callback now
-            if sig == 'connection' and ca.is_connected(chid):
+            if ca.is_connected(chid):
                 chid = ca.channel_id_to_int(chid)
                 callback = partial(func, pvname=self.channel_to_pv[chid],
                                    chid=chid, connected=True)
@@ -63,9 +69,11 @@ class CAContextHandler:
                 if oneshot:
                     return
 
-            cid = self._cbreg.subscribe(sig=sig, chid=chid, func=func,
-                                        oneshot=oneshot)
-            return cid
+            return self.subscribe(sig='connection', chid=chid, func=func,
+                                  oneshot=oneshot)
+
+    def subscribe_monitor(self, func, chid, *, oneshot=False):
+        pass
 
     def ca_subscribe(self, func, chid, *, use_ctrl=False, use_time=True,
                      mask=None):
