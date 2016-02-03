@@ -100,13 +100,6 @@ _namecache = {}
 # actual PV to signal "Get is incomplete, awaiting callback"
 
 
-class Empty:
-    """used to create a unique python value that cannot be
-    held as an actual PV value"""
-    pass
-GET_PENDING = Empty()
-
-
 class ChannelAccessException(Exception):
     """Channel Access Exception: General Errors"""
 
@@ -295,11 +288,6 @@ def finalize_libca(maxtime=10.0):
     except Exception:
         pass
     time.sleep(0.01)
-
-
-def get_cache(pvname):
-    "return cache dictionary for a given pvname in the current context"
-    return _cache[current_context()].get(pvname, None)
 
 
 def show_cache(print_out=True):
