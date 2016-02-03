@@ -33,11 +33,11 @@ from . import device
 from . import motor
 from . import multiproc
 
-PV    = pv.PV
+PV = pv.PV
 Alarm = alarm.Alarm
 Motor = motor.Motor
 Device = device.Device
-poll  = ca.poll
+poll = ca.poll
 
 get_pv = pv.get_pv
 
@@ -52,6 +52,7 @@ INVALID_ALARM = 3
 
 _PVmonitors_ = {}
 
+
 def caput(pvname, value, wait=False, timeout=60):
     """caput(pvname, value, wait=False, timeout=60)
     simple put to a pv's value.
@@ -63,6 +64,7 @@ def caput(pvname, value, wait=False, timeout=60):
     thispv = get_pv(pvname, connect=True)
     if thispv.connected:
         return thispv.put(value, wait=wait, timeout=timeout)
+
 
 def caget(pvname, as_string=False, count=None, as_numpy=True,
           use_monitor=False, timeout=None):
@@ -89,6 +91,7 @@ def caget(pvname, as_string=False, count=None, as_numpy=True,
         poll()
         return val
 
+
 def cainfo(pvname, print_out=True):
     """cainfo(pvname,print_out=True)
 
@@ -109,11 +112,13 @@ def cainfo(pvname, print_out=True):
         else:
             return thispv.info
 
+
 def camonitor_clear(pvname):
     """clear a monitor on a PV"""
     if pvname in _PVmonitors_:
         _PVmonitors_[pvname].remove_callback(index=-999)
         _PVmonitors_.pop(pvname)
+
 
 def camonitor(pvname, writer=None, callback=None):
     """ camonitor(pvname, writer=None, callback=None)
@@ -149,16 +154,21 @@ def camonitor(pvname, writer=None, callback=None):
         thispv.add_callback(callback, index=-999, with_ctrlvars=True)
         _PVmonitors_[pvname] = thispv
 
+
 def caget_many(pvlist):
     """get values for a list of PVs
     This does not maintain PV objects, and works as fast
     as possible to fetch many values.
     """
     chids, out = [], []
-    for name in pvlist: chids.append(ca.create_channel(name,
-                                                       auto_cb=False,
-                                                       connect=False))
-    for chid in chids: ca.connect_channel(chid)
-    for chid in chids: ca.get(chid, wait=False)
-    for chid in chids: out.append(ca.get_complete(chid))
+    for name in pvlist:
+        chids.append(ca.create_channel(name,
+                                       auto_cb=False,
+                                       connect=False))
+    for chid in chids:
+        ca.connect_channel(chid)
+    for chid in chids:
+        ca.get(chid, wait=False)
+    for chid in chids:
+        out.append(ca.get_complete(chid))
     return out
