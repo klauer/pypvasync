@@ -1,3 +1,5 @@
+import asyncio
+
 from ._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
@@ -53,7 +55,8 @@ INVALID_ALARM = 3
 _PVmonitors_ = {}
 
 
-def caput(pvname, value, wait=True, timeout=60):
+@asyncio.coroutine
+def caput(pvname, value, *, wait=True, timeout=60):
     """caput(pvname, value, wait=False, timeout=60)
     simple put to a pv's value.
        >>> caput('xx.VAL',3.0)
@@ -62,11 +65,14 @@ def caput(pvname, value, wait=True, timeout=60):
        >>> caput('xx.VAL',3.0,wait=True)
     """
     thispv = get_pv(pvname, connect=True)
-    if thispv.connected:
-        return thispv.put(value, wait=wait, timeout=timeout)
+    if not thispv.connected:
+        raise asyncio.TimeoutError()
+    ret = yield from thispv.put(value, wait=wait, timeout=timeout)
+    return ret
 
 
-def caget(pvname, as_string=False, count=None, as_numpy=True,
+@asyncio.coroutine
+def caget(pvname, *, as_string=False, count=None, as_numpy=True,
           use_monitor=False, timeout=None):
     """caget(pvname, as_string=False)
     simple get of a pv's value..
@@ -81,36 +87,34 @@ def caget(pvname, as_string=False, count=None, as_numpy=True,
        >>> x = caget('MyArray.VAL', count=1000)
     """
     thispv = get_pv(pvname, connect=True)
-    if thispv.connected:
-        if as_string:
-            thispv.get_ctrlvars()
-        val = thispv.get(count=count, timeout=timeout,
-                         use_monitor=use_monitor,
-                         as_string=as_string,
-                         as_numpy=as_numpy)
-        poll()
-        return val
+    if not thispv.connected:
+        raise asyncio.TimeoutError()
+
+    if as_string:
+        thispv.get_ctrlvars()
+    val = yield from thispv.get(count=count, timeout=timeout,
+                                use_monitor=use_monitor,
+                                as_string=as_string, as_numpy=as_numpy)
+    poll()
+    return val
 
 
-def cainfo(pvname, print_out=True):
-    """cainfo(pvname,print_out=True)
+@asyncio.coroutine
+def cainfo(pvname):
+    """cainfo(pvname)
 
     return printable information about pv
        >>>cainfo('xx.VAL')
 
     will return a status report for the pv.
-
-    If print_out=False, the status report will be printed,
-    and not returned.
     """
     thispv = get_pv(pvname, connect=True)
-    if thispv.connected:
-        thispv.get()
-        thispv.get_ctrlvars()
-        if print_out:
-            print(thispv.info)
-        else:
-            return thispv.info
+    if not thispv.connected:
+        raise asyncio.TimeoutError()
+
+    yield from thispv.get()
+    yield from thispv.get_ctrlvars()
+    return thispv.info
 
 
 def camonitor_clear(pvname):
@@ -162,9 +166,7 @@ def caget_many(pvlist):
     """
     chids, out = [], []
     for name in pvlist:
-        chids.append(ca.create_channel(name,
-                                       auto_cb=False,
-                                       connect=False))
+        chids.append(ca.create_channel(name, auto_cb=False, connect=False))
     for chid in chids:
         ca.connect_channel(chid)
     for chid in chids:

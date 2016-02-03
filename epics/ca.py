@@ -1386,30 +1386,16 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
     """
     global _cache
 
+    future = asyncio.Future()
+    _pending_futures.add(future)
+
     ftype = promote_type(chid, use_ctrl=True)
-    ncache = _cache[current_context()][name(chid)]
-    if ncache.get('ctrl_value', None) is None:
-        ncache['ctrl_value'] = GET_PENDING
-        ret = libca.ca_array_get_callback(ftype, 1, chid, _CB_GET,
-                                          ctypes.py_object('ctrl_value'))
 
-        PySEVCHK('get_ctrlvars', ret)
+    ret = libca.ca_array_get_callback(ftype, 1, chid,
+                                      _onGetEvent.ca_callback,
+                                      ctypes.py_object(future))
 
-    if ncache.get('ctrl_value', None) is None:
-        return {}
-
-    t0 = time.time()
-    while ncache['ctrl_value'] is GET_PENDING:
-        poll()
-        if time.time() - t0 > timeout:
-            if warn:
-                msg = "ca.get_ctrlvars('%s') timed out after %.2f seconds."
-                warnings.warn(msg % (name(chid), timeout))
-            return {}
-    try:
-        tmpv = ncache['ctrl_value'][0]
-    except TypeError:
-        return {}
+    PySEVCHK('get_ctrlvars', ret)
 
     out = {}
     for attr in ('precision', 'units', 'severity', 'status',
@@ -1417,56 +1403,50 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
                  'upper_alarm_limit', 'upper_warning_limit',
                  'lower_warning_limit', 'lower_alarm_limit',
                  'upper_ctrl_limit', 'lower_ctrl_limit'):
-        if hasattr(tmpv, attr):
-            out[attr] = getattr(tmpv, attr, None)
+        if hasattr(value, attr):
+            out[attr] = getattr(value, attr, None)
             if attr == 'units':
-                out[attr] = BYTES2STR(getattr(tmpv, attr, None))
+                out[attr] = BYTES2STR(getattr(value, attr, None))
 
-    if (hasattr(tmpv, 'strs') and hasattr(tmpv, 'no_str') and
-            tmpv.no_str > 0):
-        out['enum_strs'] = tuple([BYTES2STR(tmpv.strs[i].value)
-                                  for i in range(tmpv.no_str)])
+    if (hasattr(value, 'strs') and hasattr(value, 'no_str') and
+            value.no_str > 0):
+        out['enum_strs'] = tuple([BYTES2STR(value.strs[i].value)
+                                  for i in range(value.no_str)])
     ncache['ctrl_value'] = None
     return out
 
 
 @withConnectedCHID
+@asyncio.coroutine
 def get_timevars(chid, timeout=5.0, warn=True):
     """returns a dictionary of TIME fields for a Channel.
     This will contain keys of  *status*, *severity*, and *timestamp*.
     """
     global _cache
 
+    future = asyncio.Future()
+    _pending_futures.add(future)
+
     ftype = promote_type(chid, use_time=True)
-    ncache = _cache[current_context()][name(chid)]
-    if ncache.get('time_value', None) is None:
-        ncache['time_value'] = GET_PENDING
-        ret = libca.ca_array_get_callback(ftype, 1, chid, _CB_GET,
-                                          ctypes.py_object('time_value'))
+    ret = libca.ca_array_get_callback(ftype, 1, chid,
+                                      _onGetEvent.ca_callback,
+                                      ctypes.py_object(future))
 
-        PySEVCHK('get_timevars', ret)
+    PySEVCHK('get_timevars', ret)
 
-    out = {}
-    if ncache.get('time_value', None) is None:
-        return out
+    try:
+        value = yield from asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError as ex:
+        future.cancel()
+        raise
 
-    t0 = time.time()
-    while ncache['time_value'] is GET_PENDING:
-        poll()
-        if time.time() - t0 > timeout:
-            if warn:
-                msg = "ca.get_timevars('%s') timed out after %.2f seconds."
-                warnings.warn(msg % (name(chid), timeout))
-            return {}
-
-    tmpv = ncache['time_value'][0]
     for attr in ('status', 'severity'):
-        if hasattr(tmpv, attr):
-            out[attr] = getattr(tmpv, attr)
-    if hasattr(tmpv, 'stamp'):
-        out['timestamp'] = dbr.make_unixtime(tmpv.stamp)
+        if hasattr(value, attr):
+            out[attr] = getattr(value, attr)
 
-    ncache['time_value'] = None
+    if hasattr(value, 'stamp'):
+        out['timestamp'] = dbr.make_unixtime(value.stamp)
+
     return out
 
 

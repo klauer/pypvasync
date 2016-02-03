@@ -6,6 +6,7 @@ import time
 import threading
 import atexit
 
+print(epics.__file__)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ def test_caget():
     yield from asyncio.sleep(0.1)
     value = yield from epics.caget(pvname)
     print('read back', value)
+
+    pv = epics.PV(pvname)
+    value = yield from pv.get(with_ctrlvars=True)
+    print(pv._args)
 
 
 def threaded_poll(ctx):

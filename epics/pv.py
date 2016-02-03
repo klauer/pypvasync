@@ -9,6 +9,7 @@
 import time
 import ctypes
 import copy
+import asyncio
 from math import log10
 
 from . import ca
@@ -257,6 +258,7 @@ class PV(object):
         "poll for changes"
         ca.poll(evt=evt, iot=iot)
 
+    @asyncio.coroutine
     def get(self, count=None, as_string=False, as_numpy=True,
             timeout=None, with_ctrlvars=False, use_monitor=True):
         """returns current value of PV.  Use the options:
@@ -285,9 +287,12 @@ class PV(object):
                 (not self.auto_monitor) or
                 (self._args['value'] is None) or
                 (count is not None and count > len(self._args['value']))):
-            self._args['value'] = ca.get(self.chid, ftype=self.ftype,
-                                         count=count, timeout=timeout,
-                                         as_numpy=as_numpy)
+            self._args['value'] = yield from ca.get(self.chid,
+                                                    ftype=self.ftype,
+                                                    count=count,
+                                                    timeout=timeout,
+                                                    as_numpy=as_numpy)
+
         val = self._args['value']
         if as_string:
             return self._set_charval(val)
@@ -396,19 +401,23 @@ class PV(object):
         self._args['char_value'] = cval
         return cval
 
+    @asyncio.coroutine
     def get_ctrlvars(self, timeout=5, warn=True):
         "get control values for variable"
         if not self.wait_for_connection():
             return None
-        kwds = ca.get_ctrlvars(self.chid, timeout=timeout, warn=warn)
+        kwds = yield from ca.get_ctrlvars(self.chid, timeout=timeout,
+                                          warn=warn)
         self._args.update(kwds)
         return kwds
 
+    @asyncio.coroutine
     def get_timevars(self, timeout=5, warn=True):
         "get time values for variable"
         if not self.wait_for_connection():
             return None
-        kwds = ca.get_timevars(self.chid, timeout=timeout, warn=warn)
+        kwds = yield from ca.get_timevars(self.chid, timeout=timeout,
+                                          warn=warn)
         self._args.update(kwds)
         return kwds
 
