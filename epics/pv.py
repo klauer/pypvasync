@@ -19,6 +19,7 @@ from .utils import is_string
 _PVcache_ = {}
 
 
+@asyncio.coroutine
 def get_pv(pvname, form='time', connect=False,
            context=None, timeout=5.0, **kws):
     """get PV from PV cache or create one if needed.
@@ -48,7 +49,7 @@ def get_pv(pvname, form='time', connect=False,
         thispv = PV(pvname, form=form, **kws)
 
     if connect:
-        thispv.wait_for_connection()
+        yield from thispv.wait_for_connection()
         while not thispv.connected:
             ca.poll()
             if time.time() - start_time > timeout:
@@ -216,12 +217,21 @@ class PV(object):
         self.connected = conn
         return
 
+    @asyncio.coroutine
     def wait_for_connection(self, timeout=None):
         """wait for a connection that started with connect() to finish"""
 
         # make sure we're in the CA context used to create this PV
         if self.context != ca.current_context():
             ca.attach_context(self.context)
+
+        if not self.connected:
+            if timeout is None:
+                timeout = self.connection_timeout
+            # TODO yield from ca.connect_channel(self.chid, timeout=timeout)
+            ca.connect_channel(self.chid, timeout=timeout)
+
+        self._conn_started = True
 
         if not self._conn_started:
             self.connect()
@@ -235,24 +245,24 @@ class PV(object):
             while (not self.connected and
                    time.time() - start_time < timeout):
                 ca.poll()
-        return self.connected
 
+        if not self.connected:
+            raise asyncio.TimeoutError('Connection timeout')
+
+    @asyncio.coroutine
     def connect(self, timeout=None):
         "check that a PV is connected, forcing a connection if needed"
-        if not self.connected:
-            if timeout is None:
-                timeout = self.connection_timeout
-            ca.connect_channel(self.chid, timeout=timeout)
-        self._conn_started = True
-        return self.connected and self.ftype is not None
+        value = yield from self.wait_for_connection()
+        return value
 
+    @asyncio.coroutine
     def reconnect(self):
         "try to reconnect PV"
         self.auto_monitor = None
         self._monref = None
         self.connected = False
         self._conn_started = False
-        return self.wait_for_connection()
+        yield from self.wait_for_connection()
 
     def poll(self, evt=1.e-4, iot=1.0):
         "poll for changes"
@@ -278,10 +288,10 @@ class PV(object):
         >>> p.get('13BMD:m1.DIR', as_string=True)
         'Pos'
         """
-        if not self.wait_for_connection():
-            return None
+        yield from self.wait_for_connection()
+
         if with_ctrlvars and getattr(self, 'units', None) is None:
-            self.get_ctrlvars()
+            yield from self.get_ctrlvars()
 
         if ((not use_monitor) or
                 (not self.auto_monitor) or
@@ -315,19 +325,19 @@ class PV(object):
             val = val[:count]
         return val
 
+    @asyncio.coroutine
     def put(self, value, wait=False, timeout=30.0,
             use_complete=False, callback=None, callback_data=None):
         """set value for PV, optionally waiting until the processing is
         complete, and optionally specifying a callback function to be run
         when the processing is complete.
         """
-        if not self.wait_for_connection():
-            return None
+        yield from self.wait_for_connection()
 
         if (self.ftype in (dbr.ENUM, dbr.TIME_ENUM, dbr.CTRL_ENUM) and
                 is_string(value)):
             if self._args['enum_strs'] is None:
-                self.get_ctrlvars()
+                yield from self.get_ctrlvars()
             if value in self._args['enum_strs']:
                 # tuple.index() not supported in python2.5
                 # value = self._args['enum_strs'].index(value)
@@ -404,8 +414,7 @@ class PV(object):
     @asyncio.coroutine
     def get_ctrlvars(self, timeout=5, warn=True):
         "get control values for variable"
-        if not self.wait_for_connection():
-            return None
+        yield from self.wait_for_connection()
         kwds = yield from ca.get_ctrlvars(self.chid, timeout=timeout,
                                           warn=warn)
         self._args.update(kwds)
@@ -414,8 +423,7 @@ class PV(object):
     @asyncio.coroutine
     def get_timevars(self, timeout=5, warn=True):
         "get time values for variable"
-        if not self.wait_for_connection():
-            return None
+        yield from self.wait_for_connection()
         kwds = yield from ca.get_timevars(self.chid, timeout=timeout,
                                           warn=warn)
         self._args.update(kwds)
@@ -504,8 +512,7 @@ class PV(object):
 
     def _getinfo(self):
         "get information paragraph"
-        if not self.wait_for_connection():
-            return None
+        yield from self.wait_for_connection()
         self.get_ctrlvars()
         out = []
         mod = 'native'

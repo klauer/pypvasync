@@ -29,22 +29,19 @@ import time
 import sys
 from . import ca
 from . import dbr
+from . import context
 from . import pv
 from . import alarm
 from . import device
 from . import motor
 from . import multiproc
 
-PV = pv.PV
-Alarm = alarm.Alarm
-Motor = motor.Motor
-Device = device.Device
-poll = ca.poll
-
-get_pv = pv.get_pv
-
-CAProcess = multiproc.CAProcess
-CAPool = multiproc.CAPool
+from .pv import (get_pv, PV)
+from .alarm import (Alarm, )
+from .motor import Motor
+from .device import Device
+from .ca import poll
+from .multiproc import (CAProcess, CAPool)
 
 # some constants
 NO_ALARM = 0
@@ -64,7 +61,7 @@ def caput(pvname, value, *, wait=True, timeout=60):
     to wait for pv to complete processing, use 'wait=True':
        >>> caput('xx.VAL',3.0,wait=True)
     """
-    thispv = get_pv(pvname, connect=True)
+    thispv = yield from get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
     ret = yield from thispv.put(value, wait=wait, timeout=timeout)
@@ -86,7 +83,7 @@ def caget(pvname, *, as_string=False, count=None, as_numpy=True,
     the count with
        >>> x = caget('MyArray.VAL', count=1000)
     """
-    thispv = get_pv(pvname, connect=True)
+    thispv = yield from get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
@@ -108,7 +105,7 @@ def cainfo(pvname):
 
     will return a status report for the pv.
     """
-    thispv = get_pv(pvname, connect=True)
+    thispv = yield from get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
@@ -152,7 +149,7 @@ def camonitor(pvname, writer=None, callback=None):
                 char_value = repr(value)
             writer("%.32s %s %s" % (pvname, pv.fmt_time(), char_value))
 
-    thispv = get_pv(pvname, connect=True)
+    thispv = yield from get_pv(pvname, connect=True)
     if thispv.connected:
         thispv.get()
         thispv.add_callback(callback, index=-999, with_ctrlvars=True)

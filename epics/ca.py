@@ -516,6 +516,12 @@ def _onMonitorEvent(args):
 
 # connection event handler:
 
+@asyncio.coroutine
+def wait_on_connection(chid, *, ctx=None):
+    if ctx is None:
+        pass
+    pass
+
 
 def _onConnectionEvent(args):
     """set flag in cache holding whteher channel is
@@ -567,8 +573,6 @@ def _onConnectionEvent(args):
     #print('Connection done')
 
     return
-
-
 
 
 @ca_callback_event
@@ -944,8 +948,6 @@ def connect_channel(chid, timeout=None, verbose=False):
             _cache[ctx][pvname]['ts'] = time.time()
             _cache[ctx][pvname]['failures'] += 1
     return conn
-
-# functions with very light wrappings:
 
 
 @withCHID
@@ -1397,6 +1399,12 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
 
     PySEVCHK('get_ctrlvars', ret)
 
+    try:
+        value = yield from asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        future.cancel()
+        raise
+
     out = {}
     for attr in ('precision', 'units', 'severity', 'status',
                  'upper_disp_limit', 'lower_disp_limit',
@@ -1412,7 +1420,6 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
             value.no_str > 0):
         out['enum_strs'] = tuple([BYTES2STR(value.strs[i].value)
                                   for i in range(value.no_str)])
-    ncache['ctrl_value'] = None
     return out
 
 
@@ -1423,7 +1430,7 @@ def get_timevars(chid, timeout=5.0, warn=True):
     This will contain keys of  *status*, *severity*, and *timestamp*.
     """
     global _cache
-
+    print('get timevars')
     future = asyncio.Future()
     _pending_futures.add(future)
 

@@ -39,35 +39,8 @@ def test_caget():
 
     pv = epics.PV(pvname)
     value = yield from pv.get(with_ctrlvars=True)
-    print(pv._args)
-
-
-def threaded_poll(ctx):
-    '''Poll context ctx in an executor thread'''
-    global running
-    epics.ca.attach_context(ctx)
-    while running:
-        epics.ca.poll()
-        time.sleep(0.01)
-
-
-def wait_pollers():
-    global running
-
-    running = False
-    for future in poll_threads:
-        loop.run_until_complete(future)
+    print('ctrlvars', pv._args)
 
 
 loop = asyncio.get_event_loop()
-running = True
-try:
-    poll_threads = [loop.run_in_executor(None, threaded_poll,
-                                         epics.ca.current_context())]
-    loop.run_until_complete(test_caget())
-finally:
-    wait_pollers()
-
-    epics.ca.clear_cache()
-    epics.ca.detach_context()
-    loop.close()
+loop.run_until_complete(test_caget())
