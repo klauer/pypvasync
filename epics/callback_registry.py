@@ -24,6 +24,8 @@ def _locked(func):
 
 
 class ChannelCallbackBase:
+    sig = None
+
     def __init__(self, registry, chid):
         self.registry = registry
         self.chid = ca.channel_id_to_int(chid)
@@ -155,6 +157,14 @@ class ChannelCallbackRegistry:
         """
         owner = self.cbid_owner.pop(cbid)
         owner.remove_callback(cbid)
+
+        if not owner.callbacks:
+            chid, sig = owner.chid, owner.sig
+            self.handlers[chid][sig].remove(owner)
+
+            # TODO here is where chid can be checked to see if it's in use
+            # anywhere and can potentially be cleared
+            # self.context.clear_channel(chid)
 
     @_locked
     def process_by_cbid(self, cbid, **kwargs):

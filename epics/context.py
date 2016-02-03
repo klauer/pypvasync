@@ -22,8 +22,11 @@ loop = asyncio.get_event_loop()
 
 
 class ConnectionCallback(ChannelCallbackBase):
+    sig = 'connection'
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # store the previously run callback status here:
         self.status = None
 
     def __ge__(self, other):
@@ -49,10 +52,6 @@ class ConnectionCallback(ChannelCallbackBase):
 
         super().add_callback(cbid, func, oneshot=oneshot)
 
-    def destroy(self):
-        super().destroy()
-        # for now, don't destroy channels
-
     @_cb_locked
     def process(self, **kwargs):
         self.status = kwargs
@@ -77,6 +76,7 @@ class MonitorCallback(ChannelCallbackBase):
     #   (rtype <= atype)
     default_mask = (dbr.SubscriptionType.DBE_VALUE |
                     dbr.SubscriptionType.DBE_ALARM)
+    sig = 'monitor'
 
     def __init__(self, registry, chid, *, mask=default_mask, ftype=None):
         super().__init__(registry=registry, chid=chid)
@@ -222,7 +222,6 @@ class CAContextHandler:
         return chid
 
     def clear_channel(self, pvname):
-        print('---------- pv clear', pvname)
         with self._sub_lock:
             chid = self.pv_to_channel.pop(pvname)
             del self.channel_to_pv[chid]
