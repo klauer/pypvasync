@@ -131,8 +131,8 @@ class PV(object):
                                         chid=self.chid)
 
         self.ftype = dbr.promote_type(ca.field_type(self.chid),
-                                      use_ctrl=self.form == 'ctrl',
-                                      use_time=self.form == 'time')
+                                      use_ctrl=(self.form == 'ctrl'),
+                                      use_time=(self.form == 'time'))
         self._args['type'] = dbr.Name(self.ftype).lower()
 
         pvid = self._pvid

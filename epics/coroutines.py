@@ -403,7 +403,7 @@ def cainfo(pvname):
     return thispv.info
 
 
-
+@asyncio.coroutine
 def caget_many(pvlist):
     """# TODO unimplemented
 
@@ -417,7 +417,9 @@ def caget_many(pvlist):
     for chid in chids:
         ca.connect_channel(chid)
     for chid in chids:
-        coroutines.get(chid, wait=False)
+        get(chid, wait=False)
     for chid in chids:
-        out.append(coroutines.get_complete(chid))
+        # out.append(get_complete(chid))
+        # removed, necessary?
+        pass
     return out

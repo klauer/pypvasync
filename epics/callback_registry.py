@@ -6,6 +6,10 @@ from . import ca
 logger = logging.getLogger(__name__)
 
 
+# 'connection', chid
+# 'monitor', chid, mask, ftype
+
+
 class CallbackRegistry:
     def __init__(self, ignore_exceptions=False, allowed_sigs=None):
         self.ignore_exceptions = ignore_exceptions

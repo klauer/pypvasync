@@ -309,6 +309,7 @@ def _on_get_event(args):
         loop.call_soon_threadsafe(future.set_result,
                                   copy.deepcopy(dbr.cast_args(args)))
 
+    # TODO
     # ctypes.pythonapi.Py_DecRef(args.usr)
 
 
