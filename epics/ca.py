@@ -531,24 +531,6 @@ def _onMonitorEvent(args):
         args.usr(value=value, **kwds)
 
 
-@asyncio.coroutine
-def wait_on_connection(chid, *, ctx=None):
-    if ctx is None:
-        pass
-    pass
-
-
-@ca_connection_callback
-def _onConnectionEvent(args):
-    # TODO circular imports
-    from .context import get_contexts
-    info = dict(chid=int(args.chid),
-                connected=(args.op == dbr.OP_CONN_UP)
-                )
-
-    get_contexts().add_event(current_context(), 'connection', info)
-
-
 @ca_callback_event
 def _onGetEvent(args):
     """get_callback event: simply store data contents which will need

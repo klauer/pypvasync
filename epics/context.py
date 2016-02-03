@@ -46,7 +46,7 @@ class CAContextHandler:
         pvname = pvname.encode('ascii')
         chid = dbr.chid_t()
         ret = ca.libca.ca_create_channel(pvname,
-                                         ca._onConnectionEvent.ca_callback,
+                                         _on_connection_event.ca_callback,
                                          0, 0, ca.ctypes.byref(chid))
         ca.PySEVCHK('create_channel', ret)
         return ca.channel_id_to_int(chid)
@@ -221,3 +221,12 @@ def get_current_context():
 
 
 _cm = CAContexts()
+
+
+@ca.ca_connection_callback
+def _on_connection_event(args):
+    info = dict(chid=int(args.chid),
+                connected=(args.op == dbr.OP_CONN_UP)
+                )
+
+    _cm.add_event(ca.current_context(), 'connection', info)
