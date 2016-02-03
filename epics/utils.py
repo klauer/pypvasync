@@ -4,16 +4,56 @@ String and data utils, where implementation differs between Python 2 & 3
 import os
 import sys
 from platform import architecture
-from . import utils3 as utils_mod
+import sys
+if sys.version_info[0] != 3:
+    raise ImportError(" Python version 3 required")
 
-STR2BYTES = utils_mod.STR2BYTES
-BYTES2STR = utils_mod.BYTES2STR
-NULLCHAR = utils_mod.NULLCHAR
-NULLCHAR_2 = utils_mod.NULLCHAR_2
-strjoin = utils_mod.strjoin
-is_string = utils_mod.is_string
-is_string_or_bytes = utils_mod.is_string_or_bytes
-ascii_string = utils_mod.ascii_string
+EPICS_STR_ENCODING = 'ASCII'
+EPICS_STR_ENCODING = 'latin_1'
+NULLCHAR_2 = '\x00'
+NULLCHAR   = b'\x00'
+
+def s2b(st1):
+    'string to byte conversion'
+    if isinstance(st1, bytes):
+        return st1
+    return bytes(st1, EPICS_STR_ENCODING)
+
+def b2s(st1):
+    'byte to string conversion'
+    if isinstance(st1, str):
+        return st1
+    elif isinstance(st1, bytes):
+        return str(st1, EPICS_STR_ENCODING)
+    else:
+        return str(st1)
+
+STR2BYTES, BYTES2STR = s2b, b2s
+
+def strjoin(sep, seq):
+    "join string sequence with a separator"
+    if isinstance(sep, bytes):
+        sep = BYTES2STR(sep)
+    if len(seq) == 0:
+        seq = ''
+    elif isinstance(seq[0], bytes):
+        tmp =[]
+        for i in seq:
+            if i == NULLCHAR:
+                break
+            tmp.append(BYTES2STR(i))
+        seq = tmp
+    return sep.join(seq)
+
+def is_string(s):
+    return isinstance(s, str)
+
+def is_string_or_bytes(s):
+    return isinstance(s, str) or isinstance(s, bytes)
+
+def ascii_string(s):
+    return bytes(s, EPICS_STR_ENCODING)
+
 
 PY64_WINDOWS = (os.name == 'nt' and architecture()[0].startswith('64'))
 PY_MAJOR, PY_MINOR = sys.version_info[:2]
