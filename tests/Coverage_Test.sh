@@ -17,7 +17,6 @@ coverage run --source=epics -a -p --timid  pv_multiple_callbacks.py
 coverage run --source=epics -a -p --timid  pv_simpletest.py
 coverage run --source=epics -a -p --timid  pv_type_conversion.py
 coverage run --source=epics -a -p --timid  thread_test.py
-coverage run --source=epics -a -p --timid  sg_test.py
 
 coverage combine
 

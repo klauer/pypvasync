@@ -242,7 +242,6 @@ def initialize_libca():
     libca.ca_pend_event.argtypes = [ctypes.c_double]
     libca.ca_pend_io.argtypes = [ctypes.c_double]
     libca.ca_client_status.argtypes = [ctypes.c_void_p, ctypes.c_long]
-    libca.ca_sg_block.argtypes = [ctypes.c_ulong, ctypes.c_double]
 
     libca.ca_current_context.restype = ctypes.c_void_p
     libca.ca_version.restype = ctypes.c_char_p
@@ -1044,9 +1043,6 @@ def _unpack(chid, data, count=None, ftype=None, as_numpy=True):
     including `ca_get_array_callback` or subscription callback, and returns
     the corresponding Python data
 
-    Normally, users are not expected to need to access this function, but
-    it will be necessary why using :func:`sg_get`.
-
     Parameters
     ------------
     chid  :  ctypes.c_long or ``None``
@@ -1565,141 +1561,6 @@ def create_subscription(chid, use_time=False, use_ctrl=False,
 def clear_subscription(event_id):
     "cancel subscription given its *event_id*"
     return libca.ca_clear_subscription(event_id)
-
-
-@withCA
-@withSEVCHK
-def sg_block(gid, timeout=10.0):
-    "block for a synchronous group to complete processing"
-    return libca.ca_sg_block(gid, timeout)
-
-
-@withCA
-def sg_create():
-    """create synchronous group.
-    Returns a *group id*, `gid`, which is used to identify this group and
-    to be passed to all other synchronous group commands.
-    """
-    gid = ctypes.c_ulong()
-    pgid = ctypes.pointer(gid)
-    ret = libca.ca_sg_create(pgid)
-    PySEVCHK('sg_create', ret)
-    return gid
-
-
-@withCA
-@withSEVCHK
-def sg_delete(gid):
-    "delete a synchronous group"
-    return libca.ca_sg_delete(gid)
-
-
-@withCA
-def sg_test(gid):
-    "test whether a synchronous group has completed."
-    ret = libca.ca_sg_test(gid)
-    return PySEVCHK('sg_test', ret, dbr.ECA_IODONE)
-
-
-@withCA
-@withSEVCHK
-def sg_reset(gid):
-    "resets a synchronous group"
-    return libca.ca_sg_reset(gid)
-
-
-def sg_get(gid, chid, ftype=None, as_numpy=True, as_string=True):
-    """synchronous-group get of the current value for a Channel.
-    same options as get()
-
-    This function will not immediately return the value, of course, but the
-    address of the underlying data.
-
-    After the :func:`sg_block` has completed, you must use :func:`_unpack`
-    to convert this data address to the actual value(s).
-
-    Examples
-    ========
-
-    >>> chid = epics.ca.create_channel(PV_Name)
-    >>> epics.ca.connect_channel(chid1)
-    >>> sg = epics.ca.sg_create()
-    >>> data = epics.ca.sg_get(sg, chid)
-    >>> epics.ca.sg_block(sg)
-    >>> print epics.ca._unpack(data, chid=chid)
-
-    """
-    if not isinstance(chid, dbr.chid_t):
-        raise ChannelAccessException("not a valid chid!")
-
-    if ftype is None:
-        ftype = field_type(chid)
-    count = element_count(chid)
-
-    data = (count * dbr.Map[ftype])()
-    ret = libca.ca_sg_array_get(gid, ftype, count, chid, data)
-    PySEVCHK('sg_get', ret)
-    poll()
-
-    val = _unpack(chid, data, count=count, ftype=ftype, as_numpy=as_numpy)
-    if as_string:
-        val = _as_string(val, chid, count, ftype)
-    return val
-
-
-def sg_put(gid, chid, value):
-    """perform a `put` within a synchronous group.
-
-    This `put` cannot wait for completion or for a a callback to complete.
-    """
-    if not isinstance(chid, dbr.chid_t):
-        raise ChannelAccessException("not a valid chid!")
-
-    ftype = field_type(chid)
-    count = element_count(chid)
-    data = (count * dbr.Map[ftype])()
-
-    if ftype == dbr.STRING:
-        if count == 1:
-            data[0].value = value
-        else:
-            for elem in range(min(count, len(value))):
-                data[elem].value = value[elem]
-    elif count == 1:
-        try:
-            data[0] = value
-        except TypeError:
-            data[0] = type(data[0])(value)
-        except:
-            errmsg = "Cannot put value '%s' to PV of type '%s'"
-            tname = dbr.Name(ftype).lower()
-            raise ChannelAccessException(errmsg % (repr(value), tname))
-
-    else:
-        # auto-convert strings to arrays for character waveforms
-        # could consider using
-        # numpy.fromstring(("%s%s" % (s,NULLCHAR*maxlen))[:maxlen],
-        #                  dtype=numpy.uint8)
-        if ftype == dbr.CHAR and is_string_or_bytes(value):
-            pad = [0] * (1 + count - len(value))
-            if isinstance(value, bytes):
-                value = value.decode('ascii', 'replace')
-            value = ([ord(i) for i in value] + pad)[:count]
-
-        try:
-            ndata = len(data)
-            nuser = len(value)
-            if nuser > ndata:
-                value = value[:ndata]
-            data[:len(value)] = list(value)
-        except:
-            errmsg = "Cannot put array data to PV of type '%s'"
-            raise ChannelAccessException(errmsg % (repr(value)))
-
-    ret = libca.ca_sg_array_put(gid, ftype, count, chid, data)
-    PySEVCHK('sg_put', ret)
-    # poll()
-    return ret
 
 
 class CAThread(Thread):
