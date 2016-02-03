@@ -1,8 +1,11 @@
 """
 String and data utils, where implementation differs between Python 2 & 3
 """
+import os
 import sys
 from copy import deepcopy
+from platform import architecture
+
 
 PY_MAJOR, PY_MINOR = sys.version_info[:2]
 
@@ -24,3 +27,6 @@ memcopy = deepcopy
 if PY_MAJOR == 2 and PY_MINOR == 5:
     def memcopy(a):
         return a
+
+PY64_WINDOWS = (os.name == 'nt' and architecture()[0].startswith('64'))
+PY_MAJOR, PY_MINOR = sys.version_info[:2]

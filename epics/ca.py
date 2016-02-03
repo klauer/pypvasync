@@ -12,6 +12,7 @@ See doc/  for user documentation.
 
 documentation here is developer documentation.
 """
+import asyncio
 import ctypes
 import ctypes.util
 import functools
@@ -26,7 +27,7 @@ from threading import Thread
 
 from .utils import (STR2BYTES, BYTES2STR, NULLCHAR, NULLCHAR_2,
                     strjoin, memcopy, is_string, is_string_or_bytes,
-                    ascii_string)
+                    ascii_string, PY64_WINDOWS)
 
 # ignore warning about item size... for now??
 warnings.filterwarnings('ignore',
@@ -92,7 +93,7 @@ class ChannelAccessException(Exception):
     """Channel Access Exception: General Errors"""
 
     def __init__(self, *args):
-        Exception.__init__(self, *args)
+        super().__init__(*args)
         sys.excepthook(*sys.exc_info())
 
 
@@ -101,7 +102,7 @@ class CASeverityException(Exception):
     PySEVCHK got unexpected return value"""
 
     def __init__(self, fcn, msg):
-        Exception.__init__(self)
+        super().__init__()
         self.fcn = fcn
         self.msg = msg
 
@@ -458,8 +459,6 @@ def _onMonitorEvent(args):
     """Event Handler for monitor events: not intended for use"""
 
     # for 64-bit python on Windows!
-    if dbr.PY64_WINDOWS:
-        args = args.contents
     value = dbr.cast_args(args)
 
     pvname = name(args.chid)
@@ -505,9 +504,6 @@ def _onConnectionEvent(args):
     """set flag in cache holding whteher channel is
     connected. if provided, run a user-function"""
     # for 64-bit python on Windows!
-    if dbr.PY64_WINDOWS:
-        args = args.contents
-
     ctx = current_context()
     conn = (args.op == dbr.OP_CONN_UP)
     global _cache
@@ -555,33 +551,55 @@ def _onConnectionEvent(args):
 
     return
 
-# get event handler:
+
+def _make_callback(func, args):
+    """ make callback function"""
+    if PY64_WINDOWS:
+        # note that ctypes.POINTER is needed for 64-bit Python on Windows
+        args = ctypes.POINTER(args)
+
+        @wraps(func)
+        def wrapped(args):
+            # for 64-bit python on Windows!
+            return func(args.contents)
+        return ctypes.CFUNCTYPE(None, args)(wrapped)
+    else:
+        return ctypes.CFUNCTYPE(None, args)(func)
 
 
-def _onGetEvent(args, **kws):
-    """get_callback event: simply store data contents which
-    will need conversion to python data with _unpack()."""
-    # for 64-bit python on Windows!
-    if dbr.PY64_WINDOWS:
-        args = args.contents
+def ca_callback_event(fcn):
+    fcn.ca_callback = _make_callback(fcn, dbr.event_handler_args)
+    return fcn
 
-    # print("GET EVENT: chid, user ", args.chid, args.usr)
-    # print("GET EVENT: type, count ", args.type, args.count)
-    # print("GET EVENT: status ",  args.status, dbr.ECA_NORMAL)
-    global _cache
-    if args.status != dbr.ECA_NORMAL:
+
+@ca_callback_event
+def _onGetEvent(args):
+    """get_callback event: simply store data contents which will need
+    conversion to python data with _unpack()."""
+    print('get event')
+    print("GET EVENT: chid, user ", args.chid, args.usr)
+    print("GET EVENT: type, count ", args.type, args.count)
+    print("GET EVENT: status ",  args.status, dbr.ECA_NORMAL)
+
+    future = args.usr
+    if future.cancelled():
+        print('future was cancelled')
         return
 
-    get_cache(name(args.chid))[args.usr] = memcopy(dbr.cast_args(args))
+    # TODO futures not threadsafe? call_soon_threadsafe?
+    if args.status != dbr.ECA_NORMAL:
+        # TODO look up in appdev manual
+        future.set_exception(CASeverityException('get', str(args.status)))
+        return
+
+    future.set_result(memcopy(dbr.cast_args(args)))
 
 
-# put event handler:
+@ca_callback_event
 def _onPutEvent(args, **kwds):
     """set put-has-completed for this channel,
     call optional user-supplied callback"""
     # for 64-bit python on Windows!
-    if dbr.PY64_WINDOWS:
-        args = args.contents
 
     pvname = name(args.chid)
     fcn = _put_done[pvname][1]
@@ -597,10 +615,9 @@ def _onPutEvent(args, **kwds):
 # create global reference to these callbacks
 
 
-_CB_CONNECT = dbr.make_callback(_onConnectionEvent, dbr.connection_args)
-_CB_PUTWAIT = dbr.make_callback(_onPutEvent,        dbr.event_handler_args)
-_CB_GET = dbr.make_callback(_onGetEvent,        dbr.event_handler_args)
-_CB_EVENT = dbr.make_callback(_onMonitorEvent,    dbr.event_handler_args)
+_CB_CONNECT = _make_callback(_onConnectionEvent, dbr.connection_args)
+_CB_PUTWAIT = _make_callback(_onPutEvent,        dbr.event_handler_args)
+_CB_EVENT = _make_callback(_onMonitorEvent,    dbr.event_handler_args)
 
 # Now we're ready to wrap libca functions
 #
@@ -1106,7 +1123,8 @@ def _unpack(chid, data, count=None, ftype=None, as_numpy=True):
 
 
 @withConnectedCHID
-def get(chid, ftype=None, count=None, wait=True, timeout=None,
+@asyncio.coroutine
+def get(chid, ftype=None, count=None, timeout=None,
         as_string=False, as_numpy=True):
     """return the current value for a Channel.
     Note that there is not a separate form for array data.
@@ -1167,7 +1185,6 @@ def get(chid, ftype=None, count=None, wait=True, timeout=None,
     later with :func:`get_complete`.
 
     """
-    global _cache
 
     if ftype is None:
         ftype = field_type(chid)
@@ -1178,20 +1195,33 @@ def get(chid, ftype=None, count=None, wait=True, timeout=None,
     else:
         count = min(count, element_count(chid))
 
-    ncache = _cache[current_context()][name(chid)]
-    # implementation note: cached value of
-    #   None        implies no value, no expected callback
-    #   GET_PENDING implies no value yet, callback expected.
-    if ncache.get('value', None) is None:
-        ncache['value'] = GET_PENDING
-        ret = libca.ca_array_get_callback(ftype, count, chid, _CB_GET,
-                                          ctypes.py_object('value'))
-        PySEVCHK('get', ret)
+    future = asyncio.Future()
+    ret = libca.ca_array_get_callback(ftype, count, chid,
+                                      _onGetEvent.ca_callback,
+                                      ctypes.py_object(future))
+    PySEVCHK('get', ret)
 
-    if wait:
-        return get_complete(chid, count=count, ftype=ftype,
-                            timeout=timeout,
-                            as_string=as_string, as_numpy=as_numpy)
+    if timeout is None:
+        timeout = 1.0 + log10(max(1, count))
+
+    # poll()
+    try:
+        value = yield from asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        msg = "ca.get('%s') timed out after %.2f seconds."
+        warnings.warn(msg % (name(chid), timeout))
+        return None
+
+    print("Get Complete> Unpack ", value, count, ftype)
+    val = _unpack(chid, value, count=count, ftype=ftype, as_numpy=as_numpy)
+    print("Get Complete unpacked to ", val)
+
+    if as_string:
+        val = _as_string(val, chid, count, ftype)
+    elif isinstance(val, ctypes.Array) and HAS_NUMPY and as_numpy:
+        val = numpy.ctypeslib.as_array(memcopy(val))
+
+    return val
 
 
 @withConnectedCHID
@@ -1255,7 +1285,7 @@ def get_complete(chid, ftype=None, count=None, timeout=None,
             msg = "ca.get('%s') timed out after %.2f seconds."
             warnings.warn(msg % (name(chid), timeout))
             return None
-    #print("Get Complete> Unpack ", ncache['value'], count, ftype)
+    print("Get Complete> Unpack ", ncache['value'], count, ftype)
 
     val = _unpack(chid, ncache['value'], count=count,
                   ftype=ftype, as_numpy=as_numpy)
