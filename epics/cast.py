@@ -194,7 +194,7 @@ def cast_monitor_args(args):
             tmpv = value[0]
             kwds['status'] = tmpv.status
             kwds['severity'] = tmpv.severity
-            kwds['timestamp'] = dbr.make_unixtime(tmpv.stamp)
+            kwds['timestamp'] = tmpv.stamp.unixtime
         except IndexError:
             pass
 

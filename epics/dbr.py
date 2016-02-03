@@ -138,6 +138,11 @@ class TimeStamp(ctypes.Structure):
     _fields_ = [('secs', uint_t),
                 ('nsec', uint_t)]
 
+    @property
+    def unixtime(self):
+        "UNIX timestamp (seconds) from Epics TimeStamp structure"
+        return (EPICS2UNIX_EPOCH + self.secs + 1.e-6 * int(1.e-3 * self.nsec))
+
 
 class _stat_sev(ctypes.Structure):
     _fields_ = [('status', short_t),
@@ -155,11 +160,6 @@ class _stat_sev_ts(ctypes.Structure):
                 ('severity', short_t),
                 ('stamp', TimeStamp)
                 ]
-
-
-def make_unixtime(stamp):
-    "UNIX timestamp (seconds) from Epics TimeStamp structure"
-    return (EPICS2UNIX_EPOCH + stamp.secs + 1.e-6 * int(1.e-3 * stamp.nsec))
 
 
 class time_string(_stat_sev_ts):

@@ -298,7 +298,7 @@ def get_timevars(chid, timeout=5.0, warn=True):
 
     return dict(status=value.status,
                 severity=value.severity,
-                timestamp=dbr.make_unixtime(value.stamp),
+                timestamp=value.stamp.unixtime,
                 )
 
 
