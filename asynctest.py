@@ -46,14 +46,19 @@ def test_caget():
     print('ctrlvars', pv._args)
 
     def move_done(future, pvname=None, data=None):
+        data.append(threading.get_ident())
         print('* [put callback] move completed', pvname, data, future)
 
+    print('main thread ident', threading.get_ident())
     print()
     print('----------------------------------------')
     print('final move to 1.0 with put callback test')
-    write_pv = epics.PV(write_pvname)
-    yield from write_pv.put(1.0, callback=move_done, callback_data='testing')
 
+    thread_id = []
+    write_pv = epics.PV(write_pvname)
+    yield from write_pv.put(1.0, callback=move_done, callback_data=thread_id)
+
+    assert threading.get_ident() == thread_id[0], 'Callback not in same thread'
     yield from asyncio.sleep(0.1)
 
 loop = asyncio.get_event_loop()
