@@ -347,10 +347,10 @@ class PV(object):
                         break
         if use_complete and callback is None:
             callback = self.__putCallbackStub
-        return ca.put(self.chid, value,
-                      wait=wait, timeout=timeout,
-                      callback=callback,
-                      callback_data=callback_data)
+        yield from ca.put(self.chid, value,
+                          wait=wait, timeout=timeout,
+                          callback=callback,
+                          callback_data=callback_data)
 
     def __putCallbackStub(self, pvname=None, **kws):
         "null put-calback, so that the put_complete attribute is valid"

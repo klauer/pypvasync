@@ -31,18 +31,43 @@ from .utils import (STR2BYTES, BYTES2STR, NULLCHAR, NULLCHAR_2,
                     strjoin, memcopy, is_string, is_string_or_bytes,
                     ascii_string, PY64_WINDOWS)
 
+import numpy
+from . import dbr
+from .dbr import native_type
+
 # ignore warning about item size... for now??
 warnings.filterwarnings('ignore',
                         'Item size computed from the PEP 3118*',
                         RuntimeWarning)
 
-import numpy
-from . import dbr
-from .dbr import native_type
 
-
-_pending_futures = set()
+_pending_futures = {}
 loop = asyncio.get_event_loop()
+
+
+class CAFuture(asyncio.Future):
+    def __init__(self):
+        super().__init__()
+        _pending_futures[self] = ctypes.py_object(self)
+
+    @property
+    def py_object(self):
+        return _pending_futures[self]
+
+    def ca_callback_done(self):
+        del _pending_futures[self]
+        # TODO GC will definitely be important... not sure about py_object ref
+        # counting
+
+        # import gc
+        # gc.collect()
+
+        # print('referrers:', )
+        # for i, ref in enumerate(gc.get_referrers(self)):
+        #     info = str(ref)
+        #     if hasattr(ref, 'f_code'):
+        #         info = '[frame] {}'.format(ref.f_code.co_name)
+        #     print(i, '\t', info)
 
 
 def _make_callback(func, args):
@@ -163,9 +188,9 @@ def find_libca():
     # Test 3: on unixes, look expliticly with EPICS_BASE env var and
     # known architectures for ca.so q
     if os.name == 'posix':
-        known_hosts = {'Linux':   ('linux-x86', 'linux-x86_64'),
-                       'Darwin':  ('darwin-ppc', 'darwin-x86'),
-                       'SunOS':   ('solaris-sparc', 'solaris-sparc-gnu')}
+        known_hosts = {'Linux': ('linux-x86', 'linux-x86_64'),
+                       'Darwin': ('darwin-ppc', 'darwin-x86'),
+                       'SunOS': ('solaris-sparc', 'solaris-sparc-gnu')}
 
         libname = 'libca.so'
         if sys.platform == 'darwin':
@@ -263,7 +288,8 @@ def finalize_libca(maxtime=10.0):
     Parameters
     ----------
     maxtime : float
-        maximimum time (in seconds) to wait for :func:`flush_io` and :func:`poll` to complete.
+        maximimum time (in seconds) to wait for :func:`flush_io` and
+        :func:`poll` to complete.
 
     """
     global libca
@@ -503,7 +529,6 @@ def _onMonitorEvent(args):
     if callable(args.usr):
         args.usr(value=value, **kwds)
 
-# connection event handler:
 
 @asyncio.coroutine
 def wait_on_connection(chid, *, ctx=None):
@@ -559,9 +584,6 @@ def _onConnectionEvent(args):
                     if callable(callback):
                         # print( ' ==> connection callback ', callback, conn)
                         callback(pvname=pvname, chid=chid, conn=conn)
-    #print('Connection done')
-
-    return
 
 
 @ca_callback_event
@@ -569,7 +591,8 @@ def _onGetEvent(args):
     """get_callback event: simply store data contents which will need
     conversion to python data with _unpack()."""
     future = args.usr
-    _pending_futures.remove(future)
+    future.ca_callback_done()
+
     # print("GET EVENT: chid, user ", args.chid, future, hash(future))
     # print("           type, count ", args.type, args.count)
     # print("           status ", args.status, dbr.ECA_NORMAL)
@@ -590,19 +613,22 @@ def _onGetEvent(args):
         loop.call_soon_threadsafe(future.set_result,
                                   memcopy(dbr.cast_args(args)))
 
+    # ctypes.pythonapi.Py_DecRef(args.usr)
+
 
 @ca_callback_event
 def _onPutEvent(args, **kwds):
     """set put-has-completed for this channel"""
     future = args.usr
-    print('putevent', future)
-    _pending_futures.remove(future)
+    future.ca_callback_done()
 
     if future.done():
         print('putevent: hmm, future already done', future, id(future))
     elif not future.cancelled():
         print('finishing put event')
         loop.call_soon_threadsafe(future.set_result, True)
+
+    # ctypes.pythonapi.Py_DecRef(args.usr)
 
 
 # create global reference to these callbacks
@@ -808,7 +834,8 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
 
     Notes
     -----
-    1. The user-defined connection callback function should be prepared to accept
+    1. The user-defined connection callback function should be prepared to
+    accept
     keyword arguments of
 
          ===========  =============================
@@ -821,19 +848,19 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
 
 
     2. If `auto_cb` is ``True``, an internal connection callback is used so
-    that you should not need to explicitly connect to a channel, unless you
-    are having difficulty with dropped connections.
+    that you should not need to explicitly connect to a channel, unless you are
+    having difficulty with dropped connections.
 
-    3. If the channel is already connected for the PV name, the callback
-    will be called immediately.
+    3. If the channel is already connected for the PV name, the callback will
+    be called immediately.
 
 
     """
     #
-    # Note that _CB_CONNECT (defined above) is a global variable, holding
-    # a reference to _onConnectionEvent:  This is really the connection
-    # callback that is run -- the callack here is stored in the _cache
-    # and called by _onConnectionEvent.
+    # Note that _CB_CONNECT (defined above) is a global variable, holding a
+    # reference to _onConnectionEvent:  This is really the connection callback
+    # that is run -- the callack here is stored in the _cache and called by
+    # _onConnectionEvent.
     pvn = STR2BYTES(pvname)
     ctx = current_context()
     global _cache
@@ -903,7 +930,8 @@ def connect_channel(chid, timeout=None, verbose=False):
 
     Notes
     -----
-    1. If *timeout* is ``None``, the value of :data:`DEFAULT_CONNECTION_TIMEOUT` is used (defaults to 2.0 seconds).
+    1. If *timeout* is ``None``, the value of
+    :data:`DEFAULT_CONNECTION_TIMEOUT` is used (defaults to 2.0 seconds).
 
     2. Normally, channels will connect in milliseconds, and the connection
     callback will succeed on the first attempt.
@@ -944,7 +972,8 @@ def connect_channel(chid, timeout=None, verbose=False):
 def name(chid):
     "return PV name for channel name"
     global _namecache
-    # sys.stdout.write("NAME %s %s\n" % (repr(chid), repr(chid.value in _namecache)))
+    # sys.stdout.write("NAME %s %s\n" % (repr(chid), repr(chid.value in
+    #                  _namecache)))
     # sys.stdout.flush()
 
     if chid.value in _namecache:
@@ -1003,7 +1032,8 @@ def state(chid):
 def isConnected(chid):
     """return whether channel is connected:  `dbr.CS_CONN==state(chid)`
 
-    This is ``True`` for a connected channel, ``False`` for an unconnected channel.
+    This is ``True`` for a connected channel, ``False`` for an unconnected
+    channel.
     """
 
     return dbr.CS_CONN == state(chid)
@@ -1052,7 +1082,8 @@ def _unpack(chid, data, count=None, ftype=None, as_numpy=True):
     """
 
     def scan_string(data, count):
-        """ Scan a string, or an array of strings as a list, depending on content """
+        """ Scan a string, or an array of strings as a list, depending on
+        content """
         out = []
         for elem in range(min(count, len(data))):
             this = strjoin('', BYTES2STR(data[elem].value)).rstrip()
@@ -1181,13 +1212,10 @@ def get(chid, ftype=None, count=None, timeout=None,
     else:
         count = min(count, element_count(chid))
 
-    future = asyncio.Future()
-    _pending_futures.add(future)
-
-    print('get future', id(future))
+    future = CAFuture()
     ret = libca.ca_array_get_callback(ftype, count, chid,
                                       _onGetEvent.ca_callback,
-                                      ctypes.py_object(future))
+                                      future.py_object)
     PySEVCHK('get', ret)
 
     if timeout is None:
@@ -1195,7 +1223,7 @@ def get(chid, ftype=None, count=None, timeout=None,
 
     try:
         value = yield from asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError as ex:
+    except asyncio.TimeoutError:
         future.cancel()
         raise
 
@@ -1228,42 +1256,7 @@ def _as_string(val, chid, count, ftype):
 
 
 @withConnectedCHID
-@asyncio.coroutine
-def put(chid, value, wait=False, timeout=30, callback=None,
-        callback_data=None):
-    """sets the Channel to a value, with options to either wait
-    (block) for the processing to complete, or to execute a
-    supplied callback function when the process has completed.
-
-
-    Parameters
-    ----------
-    chid :  ctypes.c_long
-        Channel ID
-    wait : bool
-        whether to wait for processing to complete (or time-out)
-        before returning.
-    timeout : float
-        maximum time to wait for processing to complete before returning
-        anyway.
-    callback : ``None`` of callable
-        user-supplied function to run when processing has completed.
-    callback_data :  object
-        extra data to pass on to a user-supplied callback function.
-
-    Returns
-    -------
-    status : int
-         1  for success, -1 on time-out
-
-    Notes
-    -----
-    1. Specifying a callback will override setting `wait=True`.
-
-    2. A put-callback function will be called with keyword arguments
-        pvname=pvname, data=callback_data
-
-    """
+def get_put_info(chid, value):
     ftype = field_type(chid)
     count = nativecount = element_count(chid)
     if count > 1:
@@ -1327,6 +1320,32 @@ def put(chid, value, wait=False, timeout=30, callback=None,
             errmsg = "cannot put array data to PV of type '%s'"
             raise ChannelAccessException(errmsg % (repr(value)))
 
+    return ftype, count, data
+
+
+@withConnectedCHID
+@asyncio.coroutine
+def put(chid, value, wait=False, timeout=30, callback=None,
+        callback_data=None):
+    """sets the Channel to a value, with options to either wait (block) for the
+    processing to complete, or to execute a supplied callback function when the
+    process has completed.
+
+    Parameters
+    ----------
+    chid :  ctypes.c_long
+        Channel ID
+    wait : bool
+        whether to wait for processing to complete (or time-out)
+        before returning.
+    timeout : float
+        maximum time to wait for processing to complete before returning
+        anyway.
+    callback : ``None`` of callable
+        user-supplied function to run when processing has completed.
+    """
+
+    ftype, count, data = get_put_info(chid, value)
     # simple put, without wait or callback
     if not (wait or callable(callback)):
         ret = libca.ca_array_put(ftype, count, chid, data)
@@ -1334,18 +1353,16 @@ def put(chid, value, wait=False, timeout=30, callback=None,
         poll()
         return ret
 
-    future = asyncio.Future()
-    _pending_futures.add(future)
-
-    # i think this would run in the epics thread, not a good thing
-    # if callable(callback):
-    #     print('callback is', callback)
-    #     future.add_done_callback(partial(callback, pvname=name(chid),
-    #                                      data=callback_data))
+    future = CAFuture()
+    print('callback is', callback)
+    if callable(callback):
+        print('adding done callback', callback)
+        future.add_done_callback(partial(callback, pvname=name(chid),
+                                         data=callback_data))
 
     ret = libca.ca_array_put_callback(ftype, count, chid,
                                       data, _onPutEvent.ca_callback,
-                                      ctypes.py_object(future))
+                                      future.py_object)
 
     PySEVCHK('put', ret)
 
@@ -1355,9 +1372,9 @@ def put(chid, value, wait=False, timeout=30, callback=None,
         future.cancel()
         raise
 
-    if callable(callback):
-        callback(pvname=name(chid), data=callback_data)
-
+    print('put returned')
+    # if callable(callback):
+    #     callback(pvname=name(chid), data=callback_data)
     return ret
 
 
@@ -1378,14 +1395,12 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
     """
     global _cache
 
-    future = asyncio.Future()
-    _pending_futures.add(future)
-
+    future = CAFuture()
     ftype = promote_type(chid, use_ctrl=True)
 
     ret = libca.ca_array_get_callback(ftype, 1, chid,
                                       _onGetEvent.ca_callback,
-                                      ctypes.py_object(future))
+                                      future.py_object)
 
     PySEVCHK('get_ctrlvars', ret)
 
@@ -1421,19 +1436,17 @@ def get_timevars(chid, timeout=5.0, warn=True):
     """
     global _cache
     print('get timevars')
-    future = asyncio.Future()
-    _pending_futures.add(future)
-
+    future = CAFuture()
     ftype = promote_type(chid, use_time=True)
     ret = libca.ca_array_get_callback(ftype, 1, chid,
                                       _onGetEvent.ca_callback,
-                                      ctypes.py_object(future))
+                                      future.py_object)
 
     PySEVCHK('get_timevars', ret)
 
     try:
         value = yield from asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError as ex:
+    except asyncio.TimeoutError:
         future.cancel()
         raise
 
