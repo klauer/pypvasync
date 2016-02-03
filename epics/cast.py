@@ -11,6 +11,7 @@ from . import config
 from .dbr import native_type
 from .ca import (element_count, field_type, withConnectedCHID)
 from .errors import ChannelAccessException
+from .dbr import ChannelType as ChType
 
 
 def scan_string(data, count):
@@ -30,9 +31,9 @@ def scan_string(data, count):
 def array_cast(data, count, ntype, use_numpy):
     "cast ctypes array to numpy array (if using numpy)"
     if use_numpy:
-        dtype = dbr.NP_Map.get(ntype, None)
+        dtype = dbr.NumpyMap.get(ntype, None)
         if dtype is not None:
-            out = numpy.empty(shape=(count,), dtype=dbr.NP_Map[ntype])
+            out = numpy.empty(shape=(count,), dtype=dbr.NumpyMap[ntype])
             ctypes.memmove(out.ctypes.data, data, out.nbytes)
         else:
             out = numpy.ctypeslib.as_array(deepcopy(data))
@@ -45,9 +46,9 @@ def unpack_simple(data, count, ntype, use_numpy):
     "simple, native data type"
     if data is None:
         return None
-    elif count == 1 and ntype != dbr.STRING:
+    elif count == 1 and ntype != ChType.STRING:
         return data[0]
-    elif ntype == dbr.STRING:
+    elif ntype == ChType.STRING:
         return scan_string(data, count)
     elif count > 1:
         return array_cast(data, count, ntype, use_numpy)
@@ -88,9 +89,9 @@ def unpack(chid, data, count=None, ftype=None, as_numpy=True):
     if ftype is None and chid is not None:
         ftype = field_type(chid)
     if ftype is None:
-        ftype = dbr.INT
+        ftype = ChType.INT
     ntype = native_type(ftype)
-    use_numpy = (as_numpy and ntype != dbr.STRING and count > 1)
+    use_numpy = (as_numpy and ntype != ChType.STRING and count > 1)
     return unpack_simple(data, count, ntype, use_numpy)
 
 
@@ -107,7 +108,8 @@ def get_put_info(chid, value):
         except TypeError:
             print('''PyEpics Warning:
      value put() to array PV must be an array or sequence''')
-    if ftype == dbr.CHAR and nativecount > 1 and is_string_or_bytes(value):
+    if (ftype == ChType.CHAR and nativecount > 1 and
+            is_string_or_bytes(value)):
         count += 1
 
     # if needed (python3, especially) convert to basic string/bytes form
@@ -117,14 +119,14 @@ def get_put_info(chid, value):
         value = ascii_string(value)
 
     data = (count * dbr.Map[ftype])()
-    if ftype == dbr.STRING:
+    if ftype == ChType.STRING:
         if count == 1:
             data[0].value = value
         else:
             for elem in range(min(count, len(value))):
                 data[elem].value = value[elem]
     elif nativecount == 1:
-        if ftype == dbr.CHAR:
+        if ftype == ChType.CHAR:
             if is_string_or_bytes(value):
                 if isinstance(value, bytes):
                     value = value.decode('ascii', 'replace')
@@ -145,7 +147,7 @@ def get_put_info(chid, value):
                 raise ChannelAccessException(errmsg % (repr(value), tname))
 
     else:
-        if ftype == dbr.CHAR and is_string_or_bytes(value):
+        if ftype == ChType.CHAR and is_string_or_bytes(value):
             if isinstance(value, bytes):
                 value = value.decode('ascii', 'replace')
             value = [ord(i) for i in value] + [0, ]
@@ -172,7 +174,7 @@ def cast_monitor_args(args):
     # add kwds arguments for CTRL and TIME variants
     # this is in a try/except clause to avoid problems
     # caused by uninitialized waveform arrays
-    if args.type >= dbr.CTRL_STRING:
+    if args.type >= ChType.CTRL_STRING:
         try:
             tmpv = value[0]
             for attr in dbr.ctrl_limits + ('precision', 'units', 'severity'):
@@ -187,7 +189,7 @@ def cast_monitor_args(args):
                                            i in range(tmpv.no_str)])
         except IndexError:
             pass
-    elif args.type >= dbr.TIME_STRING:
+    elif args.type >= ChType.TIME_STRING:
         try:
             tmpv = value[0]
             kwds['status'] = tmpv.status

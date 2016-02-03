@@ -31,10 +31,10 @@ _namecache = {}
 libca = None
 
 
-def PySEVCHK(func_name, status, expected=dbr.ECA_NORMAL):
+def PySEVCHK(func_name, status, expected=dbr.ECA.NORMAL):
     """This checks the return *status* returned from a `libca.ca_***` and
     raises a :exc:`ChannelAccessException` if the value does not match the
-    *expected* value (which is nornmally ``dbr.ECA_NORMAL``.
+    *expected* value (which is nornmally ``dbr.ECA.NORMAL``.
 
     The message from the exception will include the *func_name* (name of
     the Python function) and the CA message from :func:`message`.
@@ -46,10 +46,10 @@ def PySEVCHK(func_name, status, expected=dbr.ECA_NORMAL):
 
 def withSEVCHK(fcn):
     """decorator to raise a ChannelAccessException if the wrapped
-    ca function does not return status = dbr.ECA_NORMAL.  This
+    ca function does not return status = dbr.ECA.NORMAL.  This
     handles the common case of running :func:`PySEVCHK` for a
     function whose return value is from a corresponding libca function
-    and whose return value should be ``dbr.ECA_NORMAL``.
+    and whose return value should be ``dbr.ECA.NORMAL``.
     """
     @functools.wraps(fcn)
     def wrapper(*args, **kwds):
@@ -115,7 +115,7 @@ def withConnectedCHID(fcn):
         if isinstance(chid, int):
             chid = dbr.chid_t(chid)
 
-        if libca.ca_state(chid) != dbr.CS_CONN:
+        if libca.ca_state(chid) != dbr.ConnStatus.CS_CONN:
             #     timeout = kwds.get('timeout',
             #     config.DEFAULT_CONNECTION_TIMEOUT)
             #     fmt = ("%s() timed out waiting '%s' to connect (%d"
@@ -201,7 +201,7 @@ def use_initial_context():
 
     """
     global initial_context
-    ret = dbr.ECA_NORMAL
+    ret = dbr.ECA.NORMAL
     if initial_context != current_context():
         ret = libca.ca_attach_context(initial_context)
     return ret
@@ -275,7 +275,7 @@ def pend_event(timeout=1.e-5):
     """polls CA for events """
     ret = libca.ca_pend_event(timeout)
     try:
-        return PySEVCHK('pend_event', ret, dbr.ECA_TIMEOUT)
+        return PySEVCHK('pend_event', ret, dbr.ECA.TIMEOUT)
     except CASeverityException:
         return ret
 
@@ -283,7 +283,7 @@ def pend_event(timeout=1.e-5):
 @withCA
 def test_io():
     """test if IO is complete: returns True if it is"""
-    return (dbr.ECA_IODONE == libca.ca_test_io())
+    return (dbr.ECA.IODONE == libca.ca_test_io())
 
 
 @withCHID
@@ -352,7 +352,7 @@ def is_connected(chid):
     This is ``True`` for a connected channel, ``False`` for an unconnected
     channel.
     """
-    return dbr.CS_CONN == state(chid)
+    return dbr.ConnStatus.CS_CONN == state(chid)
 
 
 @withCA

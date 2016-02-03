@@ -11,59 +11,82 @@ This is mostly copied from CA header files
 """
 import ctypes
 import numpy as np
+from enum import IntEnum
 
 from .utils import PY64_WINDOWS
 
+
 # EPICS Constants
-ECA_NORMAL = 1
-ECA_TIMEOUT = 80
-ECA_IODONE = 339
-ECA_ISATTACHED = 424
-ECA_BADCHID = 410
+class ECA(IntEnum):
+    NORMAL = 1
+    TIMEOUT = 80
+    IODONE = 339
+    ISATTACHED = 424
+    BADCHID = 410
 
-CS_CONN = 2
-OP_CONN_UP = 6
-OP_CONN_DOWN = 7
 
-CS_NEVER_SEARCH = 4
-#
-# Note that DBR_XXX should be replaced with dbr.XXX
-#
-STRING = 0
-INT = 1
-SHORT = 1
-FLOAT = 2
-ENUM = 3
-CHAR = 4
-LONG = 5
-DOUBLE = 6
+class ConnStatus(IntEnum):
+    CS_CONN = 2
+    OP_CONN_UP = 6
+    OP_CONN_DOWN = 7
+    CS_NEVER_SEARCH = 4
 
-STS_STRING = 7
-STS_SHORT = 8
-STS_INT = 8
-STS_FLOAT = 9
-STS_ENUM = 10
-STS_CHAR = 11
-STS_LONG = 12
-STS_DOUBLE = 13
 
-TIME_STRING = 14
-TIME_INT = 15
-TIME_SHORT = 15
-TIME_FLOAT = 16
-TIME_ENUM = 17
-TIME_CHAR = 18
-TIME_LONG = 19
-TIME_DOUBLE = 20
+class ChannelType(IntEnum):
+    STRING = 0
+    INT = 1
+    SHORT = 1
+    FLOAT = 2
+    ENUM = 3
+    CHAR = 4
+    LONG = 5
+    DOUBLE = 6
 
-CTRL_STRING = 28
-CTRL_INT = 29
-CTRL_SHORT = 29
-CTRL_FLOAT = 30
-CTRL_ENUM = 31
-CTRL_CHAR = 32
-CTRL_LONG = 33
-CTRL_DOUBLE = 34
+    STS_STRING = 7
+    STS_SHORT = 8
+    STS_INT = 8
+    STS_FLOAT = 9
+    STS_ENUM = 10
+    STS_CHAR = 11
+    STS_LONG = 12
+    STS_DOUBLE = 13
+
+    TIME_STRING = 14
+    TIME_INT = 15
+    TIME_SHORT = 15
+    TIME_FLOAT = 16
+    TIME_ENUM = 17
+    TIME_CHAR = 18
+    TIME_LONG = 19
+    TIME_DOUBLE = 20
+
+    CTRL_STRING = 28
+    CTRL_INT = 29
+    CTRL_SHORT = 29
+    CTRL_FLOAT = 30
+    CTRL_ENUM = 31
+    CTRL_CHAR = 32
+    CTRL_LONG = 33
+    CTRL_DOUBLE = 34
+
+
+ChType = ChannelType
+
+
+enum_types = (ChType.ENUM, ChType.STS_ENUM, ChType.TIME_ENUM, ChType.CTRL_ENUM)
+status_types = (ChType.STS_STRING, ChType.STS_SHORT, ChType.STS_INT,
+                ChType.STS_FLOAT, ChType.STS_ENUM, ChType.STS_CHAR,
+                ChType.STS_LONG, ChType.STS_DOUBLE)
+
+time_types = (ChType.TIME_STRING, ChType.TIME_INT, ChType.TIME_SHORT,
+              ChType.TIME_FLOAT, ChType.TIME_ENUM, ChType.TIME_CHAR,
+              ChType.TIME_LONG, ChType.TIME_DOUBLE)
+
+control_types = (ChType.CTRL_STRING, ChType.CTRL_INT, ChType.CTRL_SHORT,
+                 ChType.CTRL_FLOAT, ChType.CTRL_ENUM, ChType.CTRL_CHAR,
+                 ChType.CTRL_LONG, ChType.CTRL_DOUBLE)
+char_types = (ChType.CHAR, ChType.TIME_CHAR, ChType.CTRL_CHAR)
+native_float_types = (ChType.FLOAT, ChType.DOUBLE)
 
 MAX_STRING_SIZE = 40
 MAX_UNITS_SIZE = 8
@@ -73,11 +96,14 @@ MAX_ENUMS = 16
 # EPICS2UNIX_EPOCH = 631173600.0 - time.timezone
 EPICS2UNIX_EPOCH = 631152000.0
 
-# create_subscription mask constants
-DBE_VALUE = 1
-DBE_LOG = 2
-DBE_ALARM = 4
-DBE_PROPERTY = 8
+
+class SubscriptionEnum(IntEnum):
+    # create_subscription mask constants
+    DBE_VALUE = 1
+    DBE_LOG = 2
+    DBE_ALARM = 4
+    DBE_PROPERTY = 8
+
 
 chid_t = ctypes.c_long
 
@@ -97,11 +123,11 @@ float_t = ctypes.c_float
 double_t = ctypes.c_double
 byte_t = ctypes.c_byte
 ubyte_t = ctypes.c_ubyte
-string_t = ctypes.c_char * MAX_STRING_SIZE
 char_t = ctypes.c_char
 char_p = ctypes.c_char_p
 void_p = ctypes.c_void_p
 py_obj = ctypes.py_object
+string_t = ctypes.c_char * MAX_STRING_SIZE
 
 value_offset = None
 
@@ -236,87 +262,89 @@ class ctrl_double(_ctrl_lims(double_t), _ctrl_units):
     _fields_ = [('value', double_t)]
 
 
-NP_Map = {INT: np.int16,
-          FLOAT: np.float32,
-          ENUM: np.uint16,
-          CHAR: np.uint8,
-          LONG: np.int32,
-          DOUBLE: np.float64}
+NumpyMap = {ChType.INT: np.int16,
+            ChType.FLOAT: np.float32,
+            ChType.ENUM: np.uint16,
+            ChType.CHAR: np.uint8,
+            ChType.LONG: np.int32,
+            ChType.DOUBLE: np.float64
+            }
 
 
 # map of Epics DBR types to ctypes types
-Map = {STRING: string_t,
-       INT: short_t,
-       FLOAT: float_t,
-       ENUM: ushort_t,
-       CHAR: ubyte_t,
-       LONG: int_t,
-       DOUBLE: double_t,
+Map = {ChType.STRING: string_t,
+       ChType.INT: short_t,
+       ChType.FLOAT: float_t,
+       ChType.ENUM: ushort_t,
+       ChType.CHAR: ubyte_t,
+       ChType.LONG: int_t,
+       ChType.DOUBLE: double_t,
 
        # TODO: these right?
-       STS_STRING: string_t,
-       STS_INT: short_t,
-       STS_FLOAT: float_t,
-       STS_ENUM: ushort_t,
-       STS_CHAR: ubyte_t,
-       STS_LONG: int_t,
-       STS_DOUBLE: double_t,
+       ChType.STS_STRING: string_t,
+       ChType.STS_INT: short_t,
+       ChType.STS_FLOAT: float_t,
+       ChType.STS_ENUM: ushort_t,
+       ChType.STS_CHAR: ubyte_t,
+       ChType.STS_LONG: int_t,
+       ChType.STS_DOUBLE: double_t,
 
-       TIME_STRING: time_string,
-       TIME_INT: time_short,
-       TIME_SHORT: time_short,
-       TIME_FLOAT: time_float,
-       TIME_ENUM: time_enum,
-       TIME_CHAR: time_char,
-       TIME_LONG: time_long,
-       TIME_DOUBLE: time_double,
+       ChType.TIME_STRING: time_string,
+       ChType.TIME_INT: time_short,
+       ChType.TIME_SHORT: time_short,
+       ChType.TIME_FLOAT: time_float,
+       ChType.TIME_ENUM: time_enum,
+       ChType.TIME_CHAR: time_char,
+       ChType.TIME_LONG: time_long,
+       ChType.TIME_DOUBLE: time_double,
+
        # Note: there is no ctrl string in the C definition
-       CTRL_STRING: time_string,
-       CTRL_SHORT: ctrl_short,
-       CTRL_INT: ctrl_short,
-       CTRL_FLOAT: ctrl_float,
-       CTRL_ENUM: ctrl_enum,
-       CTRL_CHAR: ctrl_char,
-       CTRL_LONG: ctrl_long,
-       CTRL_DOUBLE: ctrl_double
+       ChType.CTRL_STRING: time_string,
+       ChType.CTRL_SHORT: ctrl_short,
+       ChType.CTRL_INT: ctrl_short,
+       ChType.CTRL_FLOAT: ctrl_float,
+       ChType.CTRL_ENUM: ctrl_enum,
+       ChType.CTRL_CHAR: ctrl_char,
+       ChType.CTRL_LONG: ctrl_long,
+       ChType.CTRL_DOUBLE: ctrl_double
        }
 
 
 NativeMap = {
-    STRING: STRING,
-    INT: INT,
-    FLOAT: FLOAT,
-    ENUM: ENUM,
-    CHAR: CHAR,
-    LONG: LONG,
-    DOUBLE: DOUBLE,
+    ChType.STRING: ChType.STRING,
+    ChType.INT: ChType.INT,
+    ChType.FLOAT: ChType.FLOAT,
+    ChType.ENUM: ChType.ENUM,
+    ChType.CHAR: ChType.CHAR,
+    ChType.LONG: ChType.LONG,
+    ChType.DOUBLE: ChType.DOUBLE,
 
-    STS_STRING: STRING,
-    STS_INT: INT,
-    STS_FLOAT: FLOAT,
-    STS_ENUM: ENUM,
-    STS_CHAR: CHAR,
-    STS_LONG: LONG,
-    STS_DOUBLE: DOUBLE,
+    ChType.STS_STRING: ChType.STRING,
+    ChType.STS_INT: ChType.INT,
+    ChType.STS_FLOAT: ChType.FLOAT,
+    ChType.STS_ENUM: ChType.ENUM,
+    ChType.STS_CHAR: ChType.CHAR,
+    ChType.STS_LONG: ChType.LONG,
+    ChType.STS_DOUBLE: ChType.DOUBLE,
 
-    TIME_STRING: STRING,
-    TIME_INT: INT,
-    TIME_SHORT: SHORT,
-    TIME_FLOAT: FLOAT,
-    TIME_ENUM: ENUM,
-    TIME_CHAR: CHAR,
-    TIME_LONG: LONG,
-    TIME_DOUBLE: DOUBLE,
+    ChType.TIME_STRING: ChType.STRING,
+    ChType.TIME_INT: ChType.INT,
+    ChType.TIME_SHORT: ChType.SHORT,
+    ChType.TIME_FLOAT: ChType.FLOAT,
+    ChType.TIME_ENUM: ChType.ENUM,
+    ChType.TIME_CHAR: ChType.CHAR,
+    ChType.TIME_LONG: ChType.LONG,
+    ChType.TIME_DOUBLE: ChType.DOUBLE,
 
     # Note: there is no ctrl string in the C definition
-    CTRL_STRING: TIME_STRING,  # <-- correct
-    CTRL_SHORT: SHORT,
-    CTRL_INT: INT,
-    CTRL_FLOAT: FLOAT,
-    CTRL_ENUM: ENUM,
-    CTRL_CHAR: CHAR,
-    CTRL_LONG: LONG,
-    CTRL_DOUBLE: DOUBLE,
+    ChType.CTRL_STRING: ChType.TIME_STRING,  # <-- correct
+    ChType.CTRL_SHORT: ChType.SHORT,
+    ChType.CTRL_INT: ChType.INT,
+    ChType.CTRL_FLOAT: ChType.FLOAT,
+    ChType.CTRL_ENUM: ChType.ENUM,
+    ChType.CTRL_CHAR: ChType.CHAR,
+    ChType.CTRL_LONG: ChType.LONG,
+    ChType.CTRL_DOUBLE: ChType.DOUBLE,
 }
 
 
@@ -334,49 +362,51 @@ def promote_type(ftype, use_time=False, use_ctrl=False):
         the promoted field value.
     """
     if use_ctrl:
-        ftype += CTRL_STRING
+        ftype += ChType.CTRL_STRING
     elif use_time:
-        ftype += TIME_STRING
-    if ftype == CTRL_STRING:
-        ftype = TIME_STRING
+        ftype += ChType.TIME_STRING
+
+    if ftype == ChType.CTRL_STRING:
+        return ChType.TIME_STRING
     return ftype
 
 
 def Name(ftype, reverse=False):
     """ convert integer data type to dbr Name, or optionally reverse that
     look up (that is, name to integer)"""
-    m = {STRING: 'STRING',
-         INT: 'INT',
-         FLOAT: 'FLOAT',
-         ENUM: 'ENUM',
-         CHAR: 'CHAR',
-         LONG: 'LONG',
-         DOUBLE: 'DOUBLE',
 
-         STS_STRING: 'STS_STRING',
-         STS_SHORT: 'STS_SHORT',
-         STS_INT: 'STS_INT',
-         STS_FLOAT: 'STS_FLOAT',
-         STS_ENUM: 'STS_ENUM',
-         STS_CHAR: 'STS_CHAR',
-         STS_LONG: 'STS_LONG',
-         STS_DOUBLE: 'STS_DOUBLE',
+    m = {ChType.STRING: 'STRING',
+         ChType.INT: 'INT',
+         ChType.FLOAT: 'FLOAT',
+         ChType.ENUM: 'ENUM',
+         ChType.CHAR: 'CHAR',
+         ChType.LONG: 'LONG',
+         ChType.DOUBLE: 'DOUBLE',
 
-         TIME_STRING: 'TIME_STRING',
-         TIME_SHORT: 'TIME_SHORT',
-         TIME_FLOAT: 'TIME_FLOAT',
-         TIME_ENUM: 'TIME_ENUM',
-         TIME_CHAR: 'TIME_CHAR',
-         TIME_LONG: 'TIME_LONG',
-         TIME_DOUBLE: 'TIME_DOUBLE',
+         ChType.STS_STRING: 'STS_STRING',
+         ChType.STS_SHORT: 'STS_SHORT',
+         ChType.STS_INT: 'STS_INT',
+         ChType.STS_FLOAT: 'STS_FLOAT',
+         ChType.STS_ENUM: 'STS_ENUM',
+         ChType.STS_CHAR: 'STS_CHAR',
+         ChType.STS_LONG: 'STS_LONG',
+         ChType.STS_DOUBLE: 'STS_DOUBLE',
 
-         CTRL_STRING: 'CTRL_STRING',
-         CTRL_SHORT: 'CTRL_SHORT',
-         CTRL_FLOAT: 'CTRL_FLOAT',
-         CTRL_ENUM: 'CTRL_ENUM',
-         CTRL_CHAR: 'CTRL_CHAR',
-         CTRL_LONG: 'CTRL_LONG',
-         CTRL_DOUBLE: 'CTRL_DOUBLE',
+         ChType.TIME_STRING: 'TIME_STRING',
+         ChType.TIME_SHORT: 'TIME_SHORT',
+         ChType.TIME_FLOAT: 'TIME_FLOAT',
+         ChType.TIME_ENUM: 'TIME_ENUM',
+         ChType.TIME_CHAR: 'TIME_CHAR',
+         ChType.TIME_LONG: 'TIME_LONG',
+         ChType.TIME_DOUBLE: 'TIME_DOUBLE',
+
+         ChType.CTRL_STRING: 'CTRL_STRING',
+         ChType.CTRL_SHORT: 'CTRL_SHORT',
+         ChType.CTRL_FLOAT: 'CTRL_FLOAT',
+         ChType.CTRL_ENUM: 'CTRL_ENUM',
+         ChType.CTRL_CHAR: 'CTRL_CHAR',
+         ChType.CTRL_LONG: 'CTRL_LONG',
+         ChType.CTRL_DOUBLE: 'CTRL_DOUBLE',
          }
     if reverse:
         name = ftype.upper()

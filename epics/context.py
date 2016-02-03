@@ -21,9 +21,10 @@ loop = asyncio.get_event_loop()
 
 class CAContextHandler:
     # Default mask for subscriptions (means update on value changes exceeding
-    # MDEL, and on alarm level changes.) Other option is dbr.DBE_LOG for
-    # archive changes (ie exceeding ADEL)
-    default_mask = dbr.DBE_VALUE | dbr.DBE_ALARM
+    # MDEL, and on alarm level changes.) Other option is DBE_LOG for archive
+    # changes (ie exceeding ADEL)
+    default_mask = (dbr.SubscriptionEnum.DBE_VALUE |
+                    dbr.SubscriptionEnum.DBE_ALARM)
 
     def __init__(self, ctx):
         self._sub_lock = threading.RLock()
@@ -270,7 +271,7 @@ def ca_connection_callback(fcn):
 def _on_connection_event(args):
     global _cm
     info = dict(chid=int(args.chid),
-                connected=(args.op == dbr.OP_CONN_UP)
+                connected=(args.op == dbr.ConnStatus.OP_CONN_UP)
                 )
     _cm.add_event(ca.current_context(), 'connection', info)
 
@@ -291,7 +292,7 @@ def _on_get_event(args):
 
     # print("GET EVENT: chid, user ", args.chid, future, hash(future))
     # print("           type, count ", args.type, args.count)
-    # print("           status ", args.status, dbr.ECA_NORMAL)
+    # print("           status ", args.status, dbr.ECA.NORMAL)
 
     if future.done():
         print('getevent: hmm, future already done', future, id(future))
@@ -301,7 +302,7 @@ def _on_get_event(args):
         print('future was cancelled', future)
         return
 
-    if args.status != dbr.ECA_NORMAL:
+    if args.status != dbr.ECA.NORMAL:
         # TODO look up in appdev manual
         ex = errors.CASeverityException('get', str(args.status))
         loop.call_soon_threadsafe(future.set_exception, ex)

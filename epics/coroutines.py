@@ -51,8 +51,7 @@ def _as_string(val, chid, count, ftype):
 
     This is a coroutine since it may hit channel access to get the enum string
     '''
-    if (ftype in (dbr.CHAR, dbr.TIME_CHAR, dbr.CTRL_CHAR) and
-            count < config.AUTOMONITOR_MAXLENGTH):
+    if (ftype in dbr.char_types and count < config.AUTOMONITOR_MAXLENGTH):
         val = strjoin('', [chr(i) for i in val if i > 0]).strip()
     elif ftype == dbr.ENUM and count == 1:
         val = yield from get_enum_strings(chid)[val]
@@ -320,8 +319,8 @@ def get_severity(chid):
 @asyncio.coroutine
 def get_precision(chid):
     """return the precision of a Channel."""
-    if ca.field_type(chid) not in (dbr.FLOAT, dbr.DOUBLE):
-        raise ValueError('Not a numeric type')
+    if ca.field_type(chid) not in dbr.native_float_types:
+        raise ValueError('Not a floating point type')
 
     info = yield from get_ctrlvars(chid)
     return info.get('precision', 0)

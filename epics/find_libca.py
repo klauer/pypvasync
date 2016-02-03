@@ -116,7 +116,7 @@ def initialize_libca():
 
     ca_context = {False: 0, True: 1}[config.PREEMPTIVE_CALLBACK]
     ret = libca.ca_context_create(ca_context)
-    if ret != dbr.ECA_NORMAL:
+    if ret != dbr.ECA.NORMAL:
         raise ChannelAccessException('cannot create Epics CA Context')
 
     # set argtypes and non-default return types

@@ -178,10 +178,10 @@ class PV(object):
             if self.auto_monitor is None:
                 self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
             if self._monref is None and self.auto_monitor:
-                # you can explicitly request a subscription mask
-                # (ie dbr.DBE_ALARM|dbr.DBE_LOG) by passing it as the
-                # auto_monitor arg, otherwise if you specify 'True' you'll
-                # just get the default set in ca.DEFAULT_SUBSCRIPTION_MASK
+                # you can explicitly request a subscription mask (ie
+                # DBE_ALARM|DBE_LOG) by passing it as the auto_monitor arg,
+                # otherwise if you specify 'True' you'll just get the default
+                # set in ca.DEFAULT_SUBSCRIPTION_MASK
                 mask = None
                 if isinstance(self.auto_monitor, int):
                     mask = self.auto_monitor
@@ -303,8 +303,7 @@ class PV(object):
         """
         yield from self.wait_for_connection()
 
-        if (self.ftype in (dbr.ENUM, dbr.TIME_ENUM, dbr.CTRL_ENUM) and
-                is_string(value)):
+        if self.ftype in dbr.enum_types and is_string(value):
             if self._args['enum_strs'] is None:
                 yield from self.get_ctrlvars()
             if value in self._args['enum_strs']:
@@ -332,11 +331,11 @@ class PV(object):
             return 'None'
         ftype = self._args['ftype']
         ntype = dbr.native_type(ftype)
-        if ntype == dbr.STRING:
+        if ntype == dbr.ChType.STRING:
             self._args['char_value'] = val
             return val
         # char waveform as string
-        if ntype == dbr.CHAR and self.count < ca.AUTOMONITOR_MAXLENGTH:
+        if ntype == dbr.ChType.CHAR and self.count < ca.AUTOMONITOR_MAXLENGTH:
             if isinstance(val, ca.numpy.ndarray):
                 val = val.tolist()
             elif self.count == 1:  # handles single character in waveform
@@ -357,7 +356,7 @@ class PV(object):
         if self.count > 1:
             cval = '<array size=%d, type=%s>' % (len(val),
                                                  dbr.Name(ftype).lower())
-        elif ntype in (dbr.FLOAT, dbr.DOUBLE):
+        elif ntype in dbr.native_float_types:
             if call_ca and self._args['precision'] is None:
                 self.get_ctrlvars()
             try:
