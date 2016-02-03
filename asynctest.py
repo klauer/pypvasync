@@ -26,7 +26,7 @@ def test_caget():
         value = yield from epics.caget(write_pvname, timeout=1e-9)
         print('value was really fast', value)
     except Exception as ex:
-        print('caget failed, as expected', pvname, ex.__class__.__name__, ex)
+        print('[expected failure] caget:', pvname, ex.__class__.__name__, ex)
 
     print()
     print('-----------')

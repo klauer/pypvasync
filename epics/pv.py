@@ -126,13 +126,15 @@ class PV(object):
             self.callbacks[0] = (callback, {})
 
         self.chid = None
-        self._args['chid'] = ca.create_channel(self.pvname,
-                                               callback=self.__on_connect)
-        self._context = get_current_context()
-        self._context.subscribe(sig='connection', func=self.__on_connect,
-                                chid=self._args['chid'])
 
-        self.chid = self._args['chid']
+        self._context = get_current_context()
+        self.chid = self._context.create_channel(self.pvname)
+
+        # subscribe should be smart enough to run the subscription if the
+        # callback happens inbetween
+        self._context.subscribe(sig='connection', func=self.__on_connect,
+                                chid=self.chid)
+
         self.ftype = ca.promote_type(self.chid,
                                      use_ctrl=self.form == 'ctrl',
                                      use_time=self.form == 'time')
@@ -151,14 +153,14 @@ class PV(object):
             chid = self.chid
         if isinstance(chid, ctypes.c_long):
             chid = chid.value
-        self._args['chid'] = self.chid = chid
+        self.chid = chid
         self.__on_connect(pvname=pvname, chid=chid, connected=connected, **kws)
 
     def __on_connect(self, pvname=None, chid=None, connected=True):
         "callback for connection events"
         print('on connect')
         if not connected:
-            self.chid = self._args['chid'] = dbr.chid_t(chid)
+            self.chid = dbr.chid_t(chid)
             try:
                 count = ca.element_count(self.chid)
             except ca.ChannelAccessException:

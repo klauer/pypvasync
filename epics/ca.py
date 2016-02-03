@@ -546,7 +546,6 @@ def wait_on_connection(chid, *, ctx=None):
 def _onConnectionEvent(args):
     # TODO circular imports
     from .context import get_contexts
-
     info = dict(chid=int(args.chid),
                 connected=(args.op == dbr.OP_CONN_UP)
                 )
@@ -602,7 +601,6 @@ def _onPutEvent(args, **kwds):
 # create global reference to these callbacks
 
 
-_CB_CONNECT = _make_callback(_onConnectionEvent, dbr.connection_args)
 _CB_EVENT = _make_callback(_onMonitorEvent, dbr.event_handler_args)
 
 # Now we're ready to wrap libca functions
@@ -760,91 +758,6 @@ def pend_event(timeout=1.e-5):
 def test_io():
     """test if IO is complete: returns True if it is"""
     return (dbr.ECA_IODONE == libca.ca_test_io())
-
-# create channel
-
-
-@withCA
-def create_channel(pvname, auto_cb=True, callback=None):
-    """ create a Channel for a given pvname
-
-    creates a channel, returning the Channel ID ``chid`` used by other
-    functions to identify this channel.
-
-    Parameters
-    ----------
-    pvname :  string
-        the name of the PV for which a channel should be created.
-    auto_cb : bool
-        whether to automatically use an internal connection callback.
-    callback : callable or ``None``
-        user-defined Python function to be called when the connection
-        state change s.
-
-    Returns
-    -------
-    chid : ctypes.c_long
-        channel ID.
-
-
-    Notes
-    -----
-    1. The user-defined connection callback function should be prepared to
-    accept
-    keyword arguments of
-
-          `pvname`    name of PV
-          `chid`      Channel ID
-          `conn`      whether channel is connected
-
-
-    2. If `auto_cb` is ``True``, an internal connection callback is used so
-    that you should not need to explicitly connect to a channel, unless you are
-    having difficulty with dropped connections.
-
-    3. If the channel is already connected for the PV name, the callback will
-    be called immediately.
-
-
-    """
-    #
-    pvn = STR2BYTES(pvname)
-    ctx = current_context()
-    global _cache
-    if ctx not in _cache:
-        _cache[ctx] = {}
-    if pvname not in _cache[ctx]:  # new PV for this context
-        entry = {'conn': False, 'chid': None,
-                 'ts': 0, 'failures': 0, 'value': None,
-                 'callbacks': [callback]}
-        # logging.debug("Create Channel %s " % pvname)
-        _cache[ctx][pvname] = entry
-    else:
-        entry = _cache[ctx][pvname]
-        if not entry['conn'] and callback is not None:  # pending connection
-            _cache[ctx][pvname]['callbacks'].append(callback)
-        elif (callable(callback) and callback not in entry['callbacks']):
-            entry['callbacks'].append(callback)
-            callback(chid=entry['chid'], pvname=pvname, conn=entry['conn'])
-
-    conncb = 0
-    if auto_cb:
-        conncb = _CB_CONNECT
-    if entry.get('chid', None) is not None:
-        # already have or waiting on a chid
-        chid = _cache[ctx][pvname]['chid']
-    else:
-        chid = dbr.chid_t()
-        ret = libca.ca_create_channel(pvn, conncb, 0, 0,
-                                      ctypes.byref(chid))
-        PySEVCHK('create_channel', ret)
-        entry['chid'] = chid
-
-    chid_key = chid
-    if isinstance(chid_key, dbr.chid_t):
-        chid_key = chid.value
-
-    return channel_id_to_int(chid)
 
 
 @withCHID

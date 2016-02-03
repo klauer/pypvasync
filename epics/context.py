@@ -7,12 +7,15 @@ import threading
 from functools import partial
 
 from . import ca
+from . import dbr
 from .callback_registry import CallbackRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class CAContextHandler:
+    default_mask = dbr.DBE_VALUE | dbr.DBE_ALARM
+
     def __init__(self, ctx):
         self._sub_lock = threading.RLock()
 
@@ -28,10 +31,25 @@ class CAContextHandler:
         sigs = list(self._queues.keys())
         self._cbreg = CallbackRegistry(allowed_sigs=sigs,
                                        ignore_exceptions=True)
-        self.pv_names = {}
+        self.channel_to_pv = {}
+        self.pv_to_channel = {}
 
     def add_event(self, type_, info):
         self._queues[type_].put(info, block=False)
+
+    def create_channel(self, pvname):
+        try:
+            return self.pv_to_channel[pvname]
+        except KeyError:
+            pass
+
+        pvname = pvname.encode('ascii')
+        chid = dbr.chid_t()
+        ret = ca.libca.ca_create_channel(pvname,
+                                         ca._onConnectionEvent.ca_callback,
+                                         0, 0, ca.ctypes.byref(chid))
+        ca.PySEVCHK('create_channel', ret)
+        return ca.channel_id_to_int(chid)
 
     def subscribe(self, sig, func, chid, *, oneshot=False):
         with self._sub_lock:
@@ -39,17 +57,30 @@ class CAContextHandler:
             # so run the callback now
             if sig == 'connection' and ca.is_connected(chid):
                 chid = ca.channel_id_to_int(chid)
-                self._loop.call_soon_threadsafe(partial(func,
-                                                        pvname=self.pv_names[chid],
-                                                        # ca.name(chid),
-                                                        chid=chid,
-                                                        connected=True))
+                callback = partial(func, pvname=self.channel_to_pv[chid],
+                                   chid=chid, connected=True)
+                self._loop.call_soon_threadsafe(callback)
                 if oneshot:
                     return
 
             cid = self._cbreg.subscribe(sig=sig, chid=chid, func=func,
                                         oneshot=oneshot)
             return cid
+
+    def ca_subscribe(self, func, chid, *, use_ctrl=False, use_time=True,
+                     mask=None):
+        mask |= self.default_mask
+        ftype = promote_type(chid, use_ctrl=use_ctrl, use_time=use_time)
+
+        uarg = ctypes.py_object(callback)
+        evid = ctypes.c_void_p()
+        # poll()
+        ret = libca.ca_create_subscription(ftype, 0, chid, mask,
+                                           _CB_EVENT, uarg, ctypes.byref(evid))
+        PySEVCHK('create_subscription', ret)
+
+        # poll()
+        return (_CB_EVENT, uarg, evid)
 
     def unsubscribe(self, cid):
         with self._sub_lock:
@@ -90,10 +121,9 @@ class CAContextHandler:
         loop = self._loop
         for info in self._queue_loop(self._connect_queue):
             with self._sub_lock:
-                print('*** connect queue:', info)
-                chid = ca.channel_id_to_int(info.pop('chid'))
+                chid = info.pop('chid')
                 pvname = ca.name(chid)
-                self.pv_names[chid] = pvname
+                self.channel_to_pv[chid] = pvname
                 loop.call_soon_threadsafe(partial(self._process_cb,
                                                   'connection', chid, **info))
 

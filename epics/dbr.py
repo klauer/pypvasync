@@ -310,7 +310,6 @@ NativeMap = {
 
 def native_type(ftype):
     "return native field type from TIME or CTRL variant"
-    print('native_type', ftype, type(ftype))
     return NativeMap[ftype]
 
 
