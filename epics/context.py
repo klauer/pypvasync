@@ -3,6 +3,7 @@ import asyncio
 import logging
 import atexit
 import queue
+import functools
 import threading
 import ctypes
 import copy
@@ -38,7 +39,7 @@ class ConnectionCallback(ChannelCallbackBase):
                                           pvname=self.pvname))
 
     def destroy(self):
-        pass
+        super().destroy()
         # for now, don't destroy channels
 
 
@@ -97,22 +98,26 @@ class MonitorCallback(ChannelCallbackBase):
     def destroy(self):
         logger.debug('Clearing subscription on %s (ftype=%s mask=%s) evid=%s',
                      self.pvname, dbr.ChType(self.ftype).name, self.mask,
-                     self.evid.value)
+                     self.evid)
+        super().destroy()
         import gc
         gc.collect()
 
-        print('referrers:', )
-        for i, ref in enumerate(gc.get_referrers(self.py_handler_id)):
-            info = str(ref)
-            if hasattr(ref, 'f_code'):
-                info = '[frame] {}'.format(ref.f_code.co_name)
-            print(i, '\t', info)
+        if self.py_handler_id is not None:
+            pass
+            # print('referrers:', )
+            # for i, ref in enumerate(gc.get_referrers(self.py_handler_id)):
+            #     info = str(ref)
+            #     if hasattr(ref, 'f_code'):
+            #         info = '[frame] {}'.format(ref.f_code.co_name)
+            #     print(i, '\t', info)
 
-        ret = ca.libca.ca_clear_subscription(self.evid)
-        ca.PySEVCHK('clear_subscription', ret)
+        if self.evid is not None:
+            ret = ca.clear_subscription(self.evid)
+            ca.PySEVCHK('clear_subscription', ret)
 
-        self.py_handler_id = None
-        self.evid = None
+            self.py_handler_id = None
+            self.evid = None
 
     def __repr__(self):
         return ('{0.__class__.__name__}(chid={0.chid}, mask={0.mask:04b}, '
@@ -141,6 +146,17 @@ class MonitorCallback(ChannelCallbackBase):
 
     def callbacks_emptied(self):
         print('all callbacks cleared, remove ca subscription')
+
+
+def _in_context(func):
+    '''Ensure function is executed in the correct CA context'''
+    @functools.wraps(func)
+    def inner(self, *args, **kwargs):
+        if ca.current_context() != self._ctx:
+            ca.attach_context(self._ctx)
+        return func(self, *args, **kwargs)
+
+    return inner
 
 
 class CAContextHandler:
@@ -189,6 +205,23 @@ class CAContextHandler:
         self.pv_to_channel[pvname] = chid
         return chid
 
+    def clear_channel(self, pvname):
+        print('---------- pv clear', pvname)
+        with self._sub_lock:
+            chid = self.pv_to_channel.pop(pvname)
+            del self.channel_to_pv[chid]
+
+            # TODO: investigate segfault
+            # ca.clear_channel(chid)
+
+            try:
+                handlers = list(self._cbreg.subscriptions_by_chid(chid))
+            except KeyError:
+                logger.debug('No handlers associated with chid')
+            else:
+                for sig, handler in handlers:
+                    handler.destroy()
+
     def subscribe(self, sig, func, chid, *, oneshot=False, **kwargs):
         return self._cbreg.subscribe(sig=sig, chid=chid, func=func,
                                      oneshot=oneshot, **kwargs)
@@ -209,11 +242,10 @@ class CAContextHandler:
         loop = self._loop
         fut = asyncio.Future()
 
-        def connection_update(chid=None, pvname=None,
-                              connected=None):
-            print('connection update', chid, pvname, connected, fut)
+        def connection_update(chid=None, pvname=None, connected=None):
+            # print('connection update', chid, pvname, connected, fut)
             if fut.done():
-                logger.debug('Connect_channel but future already done')
+                logger.debug('connect_channel but future already done')
                 return
 
             if connected:
@@ -231,14 +263,15 @@ class CAContextHandler:
         for event_type, info in self._queue_loop(self._event_queue):
             with self._sub_lock:
                 chid = info.pop('chid')
-                pvname = ca.name(chid)
-                self.channel_to_pv[chid] = pvname
+                pvname = self.channel_to_pv[chid]
                 loop.call_soon_threadsafe(partial(self._cbreg.process,
-                                                  event_type, chid, **info))
+                                                  event_type, chid,
+                                                  pvname=pvname,
+                                                  **info))
 
+    @_in_context
     def _poll_thread(self):
         '''Poll context ctx in an executor thread'''
-        ca.attach_context(self._ctx)
         try:
             while self._running:
                 ca.pend_event(1.e-5)
@@ -246,6 +279,7 @@ class CAContextHandler:
                 time.sleep(0.01)
         finally:
             print('context detach')
+            ca.flush_io()
             ca.detach_context()
             print('done')
 
@@ -255,12 +289,22 @@ class CAContextHandler:
                        loop.run_in_executor(None, self._event_queue_loop),
                        ]
 
+    @_in_context
     def stop(self):
         self._running = False
+
         if self._tasks:
             for task in self._tasks:
+                logger.debug('Stopping task %s', task)
                 self._loop.run_until_complete(task)
             del self._tasks[:]
+
+        for chid, pvname in list(self.channel_to_pv.items()):
+            logger.debug('Destroying channel %s (%d)', pvname, chid)
+            self.clear_channel(pvname)
+
+        ca.flush_io()
+        ca.detach_context()
 
     def __del__(self):
         self.stop()
@@ -298,9 +342,9 @@ class CAContexts:
             context.stop()
             del self.contexts[ctx_id]
 
-        # old finalize ca had multiple flush and wait...
-        ca.flush_io()
-        ca.detach_context()
+        # # old finalize ca had multiple flush and wait...
+        # ca.flush_io()
+        # ca.detach_context()
 
     def add_event(self, ctx, event_type, info):
         ctx_id = int(ctx)

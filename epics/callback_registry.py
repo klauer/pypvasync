@@ -40,7 +40,8 @@ class ChannelCallbackBase:
         pass
 
     def destroy(self):
-        pass
+        for cbid in list(self.callbacks.keys()):
+            self.remove_callback(cbid, destroy_if_empty=False)
 
     @_locked
     def add_callback(self, cbid, func, *, oneshot=False):
@@ -49,22 +50,29 @@ class ChannelCallbackBase:
             self.oneshots.append(cbid)
         return cbid
 
+    def clear_callbacks(self):
+        for cbid in list(self.callbacks.keys()):
+            self.remove_callback(cbid)
+
     @_locked
-    def remove_callback(self, cbid):
+    def remove_callback(self, cbid, *, destroy_if_empty=True):
         del self.callbacks[cbid]
+
         try:
             self.oneshots.remove(cbid)
         except ValueError:
             pass
 
-        if len(self.callbacks) == 0:
+        if len(self.callbacks) == 0 and destroy_if_empty:
             self.destroy()
 
     @_locked
     def process(self, **kwargs):
+        print('process', self, ':')
         with self.context._sub_lock:
             exceptions = []
             for cbid, func in self.callbacks.items():
+                print('\tprocess', func)
                 try:
                     func(chid=self.chid, **kwargs)
                 except Exception as ex:
@@ -73,8 +81,10 @@ class ChannelCallbackBase:
                                  '%s)', self.chid, kwargs, exc_info=ex)
 
             for cbid in list(self.oneshots):
+                print('\tprocess removing oneshot', cbid, self.callbacks[cbid])
                 self.remove_callback(cbid)
 
+            print('process done')
             return exceptions
 
     def __repr__(self):
@@ -157,13 +167,11 @@ class ChannelCallbackRegistry:
 
     @_locked
     def process_by_signal(self, sig, chid, **kwargs):
-        print('handlers', self.handlers)
         handlers = self.handlers[chid][sig]
         if len(handlers) > 1:
             raise RuntimeError('Process should be by callback id for this')
-        # TODO this only makes sense in the case of connection, where there's
-        # not a specific callback that can be differentiated like monitors.
-        # this may be stupid to make general...
+
+        # TODO make this user handler ids
         handler = handlers[0]
         return handler.process(**kwargs)
 
@@ -173,3 +181,8 @@ class ChannelCallbackRegistry:
             return self.process_by_cbid(cbid, **kwargs)
         else:
             return self.process_by_signal(sig, chid, **kwargs)
+
+    def subscriptions_by_chid(self, chid):
+        for sig, handlers in self.handlers[chid].items():
+            for handler in handlers:
+                yield sig, handler

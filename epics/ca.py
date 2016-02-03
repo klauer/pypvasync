@@ -41,7 +41,7 @@ def PySEVCHK(func_name, status, expected=dbr.ECA.NORMAL):
     """
     if status == expected:
         return status
-    raise CASeverityException(func_name, message(status))
+    raise errors.CASeverityException(func_name, message(status))
 
 
 def withSEVCHK(fcn):
@@ -266,7 +266,7 @@ def pend_io(timeout=1.0):
     ret = libca.ca_pend_io(timeout)
     try:
         return PySEVCHK('pend_io', ret)
-    except CASeverityException:
+    except errors.CASeverityException:
         return ret
 
 
@@ -276,7 +276,7 @@ def pend_event(timeout=1.e-5):
     ret = libca.ca_pend_event(timeout)
     try:
         return PySEVCHK('pend_event', ret, dbr.ECA.TIMEOUT)
-    except CASeverityException:
+    except errors.CASeverityException:
         return ret
 
 

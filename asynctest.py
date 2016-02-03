@@ -49,8 +49,10 @@ def test_caget():
     value = yield from epics.caget(pvname)
     print('read back', value)
 
+    return
     pv = epics.PV(pvname)
-    value = yield from pv.get(with_ctrlvars=True)
+    print('pv created', pv)
+    value = yield from pv.get(use_monitor=False, with_ctrlvars=True)
     print('ctrlvars', pv._args)
 
     def move_done(future, pvname=None, data=None):

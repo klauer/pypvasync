@@ -130,8 +130,9 @@ def initialize_libca():
     libca.ca_version.restype = ctypes.c_char_p
     libca.ca_host_name.restype = ctypes.c_char_p
     libca.ca_name.restype = ctypes.c_char_p
-    # libca.ca_name.argstypes    = [dbr.chid_t]
-    # libca.ca_state.argstypes   = [dbr.chid_t]
+    # libca.ca_name.argtypes    = [dbr.chid_t]
+    # libca.ca_state.argtypes   = [dbr.chid_t]
+    # libca.ca_clear_channel.argtypes = [dbr.chid_t]
 
     libca.ca_message.restype = ctypes.c_char_p
 

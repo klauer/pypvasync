@@ -83,10 +83,10 @@ class PV(object):
                            #  'string','double','enum','long',..
 """
 
-    _fmtsca = ("<PV '%(pvname)s', count=%(count)i, type=%(typefull)s, "
-               " access=%(access)s>")
-    _fmtarr = ("<PV '%(pvname)s', count=%(count)i/%(nelm)i, "
-               "type=%(typefull)s, access=%(access)s>")
+    _fmtsca = ("PV(%(pvname)r, count=%(count)i, type=%(typefull)r, "
+               "access=%(access)r>")
+    _fmtarr = ("PV(%(pvname)r, count=%(count)i/%(nelm)i, "
+               "type=%(typefull)r, access=%(access)r>")
 
     def __init__(self, pvname, callback=None, form='time',
                  verbose=False, auto_monitor=None,
@@ -191,9 +191,11 @@ class PV(object):
                                          use_time=use_time)
 
                 ctx = self._context
-                ref = ctx.subscribe(sig='monitor', func=self.__on_changes,
-                                    chid=self.chid, ftype=ptype, mask=mask)
-                self._mon_cbid = ref
+                handler, cbid = ctx.subscribe(sig='monitor',
+                                              func=self.__on_changes,
+                                              chid=self.chid, ftype=ptype,
+                                              mask=mask)
+                self._mon_cbid = cbid
 
         for conn_cb in self.connection_callbacks:
             if hasattr(conn_cb, '__call__'):
@@ -237,8 +239,8 @@ class PV(object):
         yield from self.wait_for_connection()
 
     @asyncio.coroutine
-    def get(self, count=None, as_string=False, as_numpy=True,
-            timeout=None, with_ctrlvars=False, use_monitor=True):
+    def get(self, count=None, as_string=False, as_numpy=True, timeout=None,
+            with_ctrlvars=False, use_monitor=True):
         """returns current value of PV.  Use the options:
         count       explicitly limit count for array data
         as_string   flag(True/False) to get a string representation
@@ -265,6 +267,7 @@ class PV(object):
                 (not self.auto_monitor) or
                 (self._args['value'] is None) or
                 (count is not None and count > len(self._args['value']))):
+            print('not use mon')
             self._args['value'] = yield from coroutines.get(self.chid,
                                                             ftype=self.ftype,
                                                             count=count,
@@ -478,7 +481,7 @@ class PV(object):
     def _getinfo(self):
         "get information paragraph"
         yield from self.wait_for_connection()
-        self.get_ctrlvars()  # <-- TODO coroutine
+        yield from self.get_ctrlvars()  # <-- TODO coroutine
         out = []
         mod = 'native'
         xtype = self._args['typefull']
@@ -700,7 +703,7 @@ class PV(object):
             else:
                 return self._fmtarr % self._args
         else:
-            return "<PV '%s': not connected>" % self.pvname
+            return "PV<%r: disconnected>" % self.pvname
 
     def __eq__(self, other):
         "test for equality"
@@ -709,8 +712,8 @@ class PV(object):
         except AttributeError:
             return False
 
-    def disconnect(self):
-        "disconnect PV"
+    def _disconnect(self, deleted):
+
         self.connected = False
 
         ctx = self._context
@@ -718,12 +721,22 @@ class PV(object):
         if pvid in _PVcache_:
             _PVcache_.pop(pvid)
 
+        self.callbacks = {}
+
         if self._mon_cbid is not None:
             cbid = self._mon_cbid
             self._mon_cbid = None
-            ctx.unsubscribe(cbid)
+            try:
+                ctx.unsubscribe(cbid)
+            except KeyError:
+                # on channel destruction, subscriptions may be deleted from
+                # underneath us, but not otherwise
+                if not deleted:
+                    raise
 
-        self.callbacks = {}
+    def disconnect(self):
+        "disconnect PV"
+        self._disconnect(deleted=False)
 
     def __del__(self):
-        self.disconnect()
+        self._disconnect(deleted=True)
