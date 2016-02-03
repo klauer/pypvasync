@@ -141,7 +141,7 @@ def get_put_info(chid, value):
                 data[0] = value
             except TypeError:
                 data[0] = type(data[0])(value)
-            except:
+            except Exception:
                 errmsg = "cannot put value '%s' to PV of type '%s'"
                 tname = dbr.ChannelType(ftype).name.lower()
                 raise ChannelAccessException(errmsg % (repr(value), tname))
@@ -169,7 +169,7 @@ def cast_monitor_args(args):
 
     value = cast_args(args)
     kwds = {'ftype': args.type, 'count': args.count, 'chid': args.chid,
-            'status': args.status}
+            'status': args.status, 'handler_id': args.usr}
 
     # add kwds arguments for CTRL and TIME variants
     # this is in a try/except clause to avoid problems
@@ -177,7 +177,8 @@ def cast_monitor_args(args):
     if args.type >= ChType.CTRL_STRING:
         try:
             tmpv = value[0]
-            for attr in dbr.ctrl_limits + ('precision', 'units', 'severity'):
+            ctrl_names = dbr._ctrl_lims.field_names
+            for attr in ctrl_names + ['precision', 'units', 'severity']:
                 if hasattr(tmpv, attr):
                     kwds[attr] = getattr(tmpv, attr)
                     if attr == 'units':

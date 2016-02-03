@@ -18,7 +18,7 @@ def _locked(func):
     @functools.wraps(func)
     def inner(self, *args, **kwargs):
         with self._sub_lock:
-            return func(*args, **kwargs)
+            return func(self, *args, **kwargs)
 
     return inner
 
@@ -26,12 +26,15 @@ def _locked(func):
 class ChannelCallbackBase:
     def __init__(self, registry, chid):
         self.registry = registry
+        self.chid = ca.channel_id_to_int(chid)
+        self.handler_id = None
+
         self.context = registry.context
+        self.pvname = self.context.channel_to_pv[self.chid]
+        self._sub_lock = registry._sub_lock
+
         self.callbacks = OrderedDict()
         self.oneshots = []
-        self.chid = ca.channel_id_to_int(chid)
-        self._sub_lock = registry._sub_lock
-        self.pvname = self.context.channel_to_pv[self.chid]
 
     def create(self):
         pass
@@ -74,6 +77,9 @@ class ChannelCallbackBase:
 
             return exceptions
 
+    def __repr__(self):
+        return '{0}({1.pvname!r})'.format(self.__class__.__name__, self)
+
 
 class ChannelCallbackRegistry:
     def __init__(self, context, sig_classes):
@@ -82,6 +88,7 @@ class ChannelCallbackRegistry:
         self.handlers = dict()
         self.cbid_owner = {}
         self._cbid = 0
+        self._handler_id = 0
         self._sub_lock = context._sub_lock
 
     def __getstate__(self):
@@ -110,7 +117,7 @@ class ChannelCallbackRegistry:
         sig_handlers = self.handlers[chid][sig]
 
         handler_class = self.sig_classes[sig]
-        new_handler = handler_class(self, **kwargs)
+        new_handler = handler_class(self, chid, **kwargs)
 
         # fair warning to anyone looking to make this more efficient (you know
         # who you are): there shouldn't be enough entries in the callback list
@@ -124,6 +131,9 @@ class ChannelCallbackRegistry:
         new_handler.add_callback(cbid, func, oneshot=oneshot)
 
         if new_handler not in sig_handlers:
+            self._handler_id += 1
+            new_handler.handler_id = self._handler_id
+
             sig_handlers.append(new_handler)
             new_handler.create()
 
@@ -141,6 +151,25 @@ class ChannelCallbackRegistry:
         owner.remove_callback(cbid)
 
     @_locked
-    def process(self, cbid, **kwargs):
+    def process_by_cbid(self, cbid, **kwargs):
         owner = self.cbid_owner[cbid]
         return owner.process(**kwargs)
+
+    @_locked
+    def process_by_signal(self, sig, chid, **kwargs):
+        print('handlers', self.handlers)
+        handlers = self.handlers[chid][sig]
+        if len(handlers) > 1:
+            raise RuntimeError('Process should be by callback id for this')
+        # TODO this only makes sense in the case of connection, where there's
+        # not a specific callback that can be differentiated like monitors.
+        # this may be stupid to make general...
+        handler = handlers[0]
+        return handler.process(**kwargs)
+
+    @_locked
+    def process(self, sig, chid, *, cbid=None, **kwargs):
+        if cbid is not None:
+            return self.process_by_cbid(cbid, **kwargs)
+        else:
+            return self.process_by_signal(sig, chid, **kwargs)

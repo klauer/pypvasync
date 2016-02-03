@@ -91,8 +91,9 @@ class PV(object):
     def __init__(self, pvname, callback=None, form='time',
                  verbose=False, auto_monitor=None,
                  connection_callback=None,
-                 connection_timeout=None):
+                 connection_timeout=None, monitor_mask=None):
 
+        self.monitor_mask = monitor_mask
         self.pvname = pvname.strip()
         self.form = form.lower()
         self.verbose = verbose
@@ -111,7 +112,7 @@ class PV(object):
 
         self.callbacks = {}
         # holder of data returned from create_subscription
-        self._monref = None
+        self._mon_cbid = None
         self._conn_started = False
         if isinstance(callback, (tuple, list)):
             for i, thiscb in enumerate(callback):
@@ -127,8 +128,8 @@ class PV(object):
 
         # subscribe should be smart enough to run the subscription if the
         # callback happens inbetween
-        self._context.subscribe_connect(func=self.__on_connect,
-                                        chid=self.chid)
+        self._context.subscribe(sig='connection', func=self.__on_connect,
+                                chid=self.chid)
 
         self.ftype = dbr.promote_type(ca.field_type(self.chid),
                                       use_ctrl=(self.form == 'ctrl'),
@@ -178,24 +179,21 @@ class PV(object):
 
             if self.auto_monitor is None:
                 self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
-            if self._monref is None and self.auto_monitor:
+            if self._mon_cbid is None and self.auto_monitor:
                 # you can explicitly request a subscription mask (ie
                 # DBE_ALARM|DBE_LOG) by passing it as the auto_monitor arg,
                 # otherwise if you specify 'True' you'll just get the default
                 # set in ca.DEFAULT_SUBSCRIPTION_MASK
-                mask = None
-                if isinstance(self.auto_monitor, int):
-                    mask = self.auto_monitor
+                mask = self.monitor_mask
                 use_ctrl = (self.form == 'ctrl')
                 use_time = (self.form == 'time')
+                ptype = dbr.promote_type(self.ftype, use_ctrl=use_ctrl,
+                                         use_time=use_time)
 
                 ctx = self._context
-                ref = ctx.subscribe_monitor(func=self.__on_changes,
-                                            chid=self.chid,
-                                            use_ctrl=use_ctrl,
-                                            use_time=use_time,
-                                            mask=mask)
-                self._monref = ref
+                ref = ctx.subscribe(sig='monitor', func=self.__on_changes,
+                                    chid=self.chid, ftype=ptype, mask=mask)
+                self._mon_cbid = ref
 
         for conn_cb in self.connection_callbacks:
             if hasattr(conn_cb, '__call__'):
@@ -233,7 +231,7 @@ class PV(object):
     def reconnect(self):
         "try to reconnect PV"
         self.auto_monitor = None
-        self._monref = None
+        self._mon_cbid = None
         self.connected = False
         self._conn_started = False
         yield from self.wait_for_connection()
@@ -529,7 +527,7 @@ class PV(object):
             for index, nam in enumerate(self.enum_strs):
                 out.append("       %i = %s " % (index, nam))
 
-        if self._monref is not None:
+        if self._mon_cbid is not None:
             msg = 'PV is internally monitored'
             out.append('   %s, with %i user-defined callbacks:'
                        '' % (msg, len(self.callbacks)))
@@ -720,26 +718,12 @@ class PV(object):
         if pvid in _PVcache_:
             _PVcache_.pop(pvid)
 
-        if self._monref is not None:
-            raise NotImplementedError('tell context to detach')
-            cback, uarg, evid = self._monref
-            ca.clear_subscription(evid)
-            ctx = ca.current_context()
-            if self.pvname in ca._cache[ctx]:
-                ca._cache[ctx].pop(self.pvname)
-            del cback
-            del uarg
-            del evid
-            try:
-                self._monref = None
-                self._args.clear()
-            except:
-                pass
+        if self._mon_cbid is not None:
+            cbid = self._mon_cbid
+            self._mon_cbid = None
+            ctx.unsubscribe(cbid)
 
         self.callbacks = {}
 
     def __del__(self):
-        try:
-            self.disconnect()
-        except:
-            pass
+        self.disconnect()

@@ -63,11 +63,14 @@ class MonitorCallback(ChannelCallbackBase):
 
     def __init__(self, registry, chid, *, mask=default_mask, ftype=None):
         super().__init__(registry=registry, chid=chid)
-        if mask <= 0:
-            raise ValueError('Invalid subscription mask')
 
         if ftype is None:
             ftype = ca.field_type(chid)
+
+        if mask is None:
+            mask = self.default_mask
+        elif mask <= 0:
+            raise ValueError('Invalid subscription mask')
 
         self.mask = int(mask)
         self.ftype = int(ftype)
@@ -75,7 +78,7 @@ class MonitorCallback(ChannelCallbackBase):
 
         # monitor information for when it's created:
         # python object referencing the callback id
-        self.py_cid = None
+        self.py_handler_id = None
         # event id returned from ca_create_subscription
         self.evid = None
 
@@ -84,10 +87,11 @@ class MonitorCallback(ChannelCallbackBase):
                      self.pvname, dbr.ChType(self.ftype).name, self.mask)
         self.evid = ctypes.c_void_p()
         ca_callback = _on_monitor_event.ca_callback
-        self.py_cid = ctypes.py_object(self.cid)
+        self.py_handler_id = ctypes.py_object(self.handler_id)
         ret = ca.libca.ca_create_subscription(self.ftype, 0, self.chid,
                                               self.mask, ca_callback,
-                                              self.py_cid, ctypes.byref(evid))
+                                              self.py_handler_id,
+                                              ctypes.byref(self.evid))
         ca.PySEVCHK('create_subscription', ret)
 
     def destroy(self):
@@ -98,7 +102,7 @@ class MonitorCallback(ChannelCallbackBase):
         gc.collect()
 
         print('referrers:', )
-        for i, ref in enumerate(gc.get_referrers(self.py_cid)):
+        for i, ref in enumerate(gc.get_referrers(self.py_handler_id)):
             info = str(ref)
             if hasattr(ref, 'f_code'):
                 info = '[frame] {}'.format(ref.f_code.co_name)
@@ -107,7 +111,7 @@ class MonitorCallback(ChannelCallbackBase):
         ret = ca.libca.ca_clear_subscription(self.evid)
         ca.PySEVCHK('clear_subscription', ret)
 
-        self.py_cid = None
+        self.py_handler_id = None
         self.evid = None
 
     def __repr__(self):
@@ -173,13 +177,17 @@ class CAContextHandler:
         except KeyError:
             pass
 
-        pvname = pvname.encode('ascii')
         chid = dbr.chid_t()
-        ret = ca.libca.ca_create_channel(pvname,
+        ret = ca.libca.ca_create_channel(pvname.encode('ascii'),
                                          _on_connection_event.ca_callback,
                                          0, 0, ctypes.byref(chid))
+
         ca.PySEVCHK('create_channel', ret)
-        return ca.channel_id_to_int(chid)
+
+        chid = ca.channel_id_to_int(chid)
+        self.channel_to_pv[chid] = pvname
+        self.pv_to_channel[pvname] = chid
+        return chid
 
     def subscribe(self, sig, func, chid, *, oneshot=False, **kwargs):
         return self._cbreg.subscribe(sig=sig, chid=chid, func=func,
@@ -225,18 +233,8 @@ class CAContextHandler:
                 chid = info.pop('chid')
                 pvname = ca.name(chid)
                 self.channel_to_pv[chid] = pvname
-                loop.call_soon_threadsafe(partial(self._locked_process_cb,
+                loop.call_soon_threadsafe(partial(self._cbreg.process,
                                                   event_type, chid, **info))
-
-                # TODO need to further differentiate monitor callbacks based on
-                # use_time, use_ctrl, etc.
-                # may be possible to send more info than requested, but never
-                # less
-
-    def _locked_process_cb(self, event_type, chid, **info):
-        with self._sub_lock:
-            print('*** cb processing', event_type, chid, info)
-            self._cbreg.process(event_type, chid, **info)
 
     def _poll_thread(self):
         '''Poll context ctx in an executor thread'''
@@ -407,5 +405,3 @@ def _on_put_event(args, **kwds):
         loop.call_soon_threadsafe(future.set_result, True)
 
     # ctypes.pythonapi.Py_DecRef(args.usr)
-
-

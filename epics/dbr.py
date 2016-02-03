@@ -201,22 +201,24 @@ class time_double(_stat_sev_ts):
                 ('value', double_t)]
 
 
-def _ctrl_lims(t):
+def _ctrl_lims(type_):
     # DBR types with full control and graphical fields
-    # yes, this strange order is as in db_access.h!!!
-
     class ctrl_lims(ctypes.Structure):
-        _fields_ = [('upper_disp_limit', t),
-                    ('lower_disp_limit', t),
-                    ('upper_alarm_limit', t),
-                    ('upper_warning_limit', t),
-                    ('lower_warning_limit', t),
-                    ('lower_alarm_limit', t),
-                    ('upper_ctrl_limit', t),
-                    ('lower_ctrl_limit', t),
+        _fields_ = [(field, type_)
+                    for field in _ctrl_lims.field_names
                     ]
 
     return ctrl_lims
+
+_ctrl_lims.field_names = ['upper_disp_limit',
+                          'lower_disp_limit',
+                          'upper_alarm_limit',
+                          'upper_warning_limit',
+                          'lower_warning_limit',
+                          'lower_alarm_limit',
+                          'upper_ctrl_limit',
+                          'lower_ctrl_limit',
+                          ]
 
 
 class ctrl_enum(_stat_sev):
