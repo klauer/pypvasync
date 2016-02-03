@@ -371,52 +371,6 @@ def promote_type(ftype, use_time=False, use_ctrl=False):
     return ftype
 
 
-def Name(ftype, reverse=False):
-    """ convert integer data type to dbr Name, or optionally reverse that
-    look up (that is, name to integer)"""
-
-    m = {ChType.STRING: 'STRING',
-         ChType.INT: 'INT',
-         ChType.FLOAT: 'FLOAT',
-         ChType.ENUM: 'ENUM',
-         ChType.CHAR: 'CHAR',
-         ChType.LONG: 'LONG',
-         ChType.DOUBLE: 'DOUBLE',
-
-         ChType.STS_STRING: 'STS_STRING',
-         ChType.STS_SHORT: 'STS_SHORT',
-         ChType.STS_INT: 'STS_INT',
-         ChType.STS_FLOAT: 'STS_FLOAT',
-         ChType.STS_ENUM: 'STS_ENUM',
-         ChType.STS_CHAR: 'STS_CHAR',
-         ChType.STS_LONG: 'STS_LONG',
-         ChType.STS_DOUBLE: 'STS_DOUBLE',
-
-         ChType.TIME_STRING: 'TIME_STRING',
-         ChType.TIME_SHORT: 'TIME_SHORT',
-         ChType.TIME_FLOAT: 'TIME_FLOAT',
-         ChType.TIME_ENUM: 'TIME_ENUM',
-         ChType.TIME_CHAR: 'TIME_CHAR',
-         ChType.TIME_LONG: 'TIME_LONG',
-         ChType.TIME_DOUBLE: 'TIME_DOUBLE',
-
-         ChType.CTRL_STRING: 'CTRL_STRING',
-         ChType.CTRL_SHORT: 'CTRL_SHORT',
-         ChType.CTRL_FLOAT: 'CTRL_FLOAT',
-         ChType.CTRL_ENUM: 'CTRL_ENUM',
-         ChType.CTRL_CHAR: 'CTRL_CHAR',
-         ChType.CTRL_LONG: 'CTRL_LONG',
-         ChType.CTRL_DOUBLE: 'CTRL_DOUBLE',
-         }
-    if reverse:
-        name = ftype.upper()
-        if name in list(m.values()):
-            for key, val in m.items():
-                if name == val:
-                    return key
-    return m.get(ftype, 'unknown')
-
-
 def cast_args(args):
     """returns casted array contents
 

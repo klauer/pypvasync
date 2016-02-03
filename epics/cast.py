@@ -143,7 +143,7 @@ def get_put_info(chid, value):
                 data[0] = type(data[0])(value)
             except:
                 errmsg = "cannot put value '%s' to PV of type '%s'"
-                tname = dbr.Name(ftype).lower()
+                tname = dbr.ChannelType(ftype).name.lower()
                 raise ChannelAccessException(errmsg % (repr(value), tname))
 
     else:

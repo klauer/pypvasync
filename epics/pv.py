@@ -133,7 +133,7 @@ class PV(object):
         self.ftype = dbr.promote_type(ca.field_type(self.chid),
                                       use_ctrl=(self.form == 'ctrl'),
                                       use_time=(self.form == 'time'))
-        self._args['type'] = dbr.Name(self.ftype).lower()
+        self._args['type'] = dbr.ChannelType(self.ftype).name.lower()
 
         pvid = self._pvid
         if pvid not in _PVcache_:
@@ -170,10 +170,11 @@ class PV(object):
             self.ftype = dbr.promote_type(ca.field_type(self.chid),
                                           use_ctrl=self.form == 'ctrl',
                                           use_time=self.form == 'time')
-            _ftype_ = dbr.Name(self.ftype).lower()
-            self._args['type'] = _ftype_
-            self._args['typefull'] = _ftype_
-            self._args['ftype'] = dbr.Name(_ftype_, reverse=True)
+
+            ftype_name = dbr.ChannelType(self.ftype).name.lower()
+            self._args['type'] = ftype_name
+            self._args['typefull'] = ftype_name
+            self._args['ftype'] = self.ftype
 
             if self.auto_monitor is None:
                 self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
@@ -354,8 +355,8 @@ class PV(object):
 
         cval = repr(val)
         if self.count > 1:
-            cval = '<array size=%d, type=%s>' % (len(val),
-                                                 dbr.Name(ftype).lower())
+            typename = dbr.ChannelType(ftype).name.lower()
+            cval = '<array size=%d, type=%s>' % (len(val), typename)
         elif ntype in dbr.native_float_types:
             if call_ca and self._args['precision'] is None:
                 self.get_ctrlvars()
