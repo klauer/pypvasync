@@ -5,7 +5,8 @@ import os
 import sys
 from platform import architecture
 import sys
-if sys.version_info[0] != 3:
+
+if sys.version_info[0] < 3:
     raise ImportError(" Python version 3 required")
 
 EPICS_STR_ENCODING = 'ASCII'
@@ -56,4 +57,3 @@ def ascii_string(s):
 
 
 PY64_WINDOWS = (os.name == 'nt' and architecture()[0].startswith('64'))
-PY_MAJOR, PY_MINOR = sys.version_info[:2]

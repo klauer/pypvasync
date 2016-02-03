@@ -11,6 +11,12 @@ import operator
 from . import pv
 from .utils import is_string
 
+# some constants
+NO_ALARM = 0
+MINOR_ALARM = 1
+MAJOR_ALARM = 2
+INVALID_ALARM = 3
+
 class Alarm(object):
     """ alarm class for a PV:
     run a user-supplied callback when a PV's value goes out of range
@@ -30,7 +36,7 @@ class Alarm(object):
        alert_delay    time (in seconds) to stay quiet after executing a callback.
                       this is a minimum time, as it is checked only when a PVs
                       value actually changes.  See note below.
-       
+
     example:
        >>> from epics import alarm, poll
        >>> def alarmHandler(pvname=None, value=None, **kw):
@@ -44,7 +50,7 @@ class Alarm(object):
        >>>     poll()
 
     when 'XX.VAL' exceeds (is 'gt') 2.0, the alarmHandler will be called.
-    
+
     notes:
       alarm_delay:  The alarm delay avoids over-notification by specifying a
 
@@ -52,18 +58,18 @@ class Alarm(object):
                     sent, even if a value is changing and out-of-range.  Since
                     Epics callback are used to process events, the alarm state
                     will only be checked when a PV's value changes.
-                    
+
       callback function:  the user-supplied callback function should be prepared
                     for a large number of keyword arguments: use **kw!!!
                     For further explanation, see notes in pv.py.
-                
+
                     These keyword arguments will always be included:
-                    
+
                     pvname      name of PV
                     value       current value of PV
                     char_value  text string for PV
                     trip_point  will hold the trip point used to define 'out of range'
-                    comparison  string 
+                    comparison  string
                     self.user_callback(pvname=pvname, value=value,
                                    char_value=char_value,
                                    trip_point=self.trip_point,
@@ -82,7 +88,7 @@ class Alarm(object):
            '>=': operator.__ge__,
            'gt': operator.__gt__,
            '>' : operator.__gt__ }
-    
+
     def __init__(self, pvname, comparison=None, trip_point=None,
                  callback=None, alert_delay=10):
 
@@ -91,12 +97,12 @@ class Alarm(object):
         elif is_string(pvname):
             self.pv = pv.get_pv(pvname)
             self.pv.connect()
-        
+
         if self.pv is None or comparison is None or trip_point is None:
             msg = 'alarm requires valid PV, comparison, and trip_point'
             raise UserWarning(msg)
-      
-       
+
+
         self.trip_point = trip_point
 
         self.last_alert  = 0
@@ -107,25 +113,25 @@ class Alarm(object):
         self.comp_name = 'Not Defined'
         if hasattr(comparison, '__call__'):
             self.comp_name  = comparison.__name__
-            self.cmp = comparison            
+            self.cmp = comparison
         elif comparison is not None:
             self.cmp   = self.ops.get(comparison.replace('_', ''), None)
             if self.cmp is not None:
                 self.comp_name  = comparison
-            
+
         self.alarm_state = False
         self.pv.add_callback(self.check_alarm)
         self.check_alarm()
-        
+
     def __repr__(self):
         return "<Alarm '%s', comp=%s, trip_point=%s >" % (self.pv.name,
                                                           self.comp_name,
                                                           self.trip_point)
     def reset(self):
-        "resets the alarm state" 
+        "resets the alarm state"
         self.last_alert = 0
         self.alarm_state = False
-    
+
     def check_alarm(self, pvname=None, value=None, char_value=None, **kw):
         """checks alarm status, act if needed.
         """
@@ -138,7 +144,7 @@ class Alarm(object):
         old_alarm_state  = self.alarm_state
         self.alarm_state =  self.cmp(val, self.trip_point)
 
-        now = time.time()        
+        now = time.time()
 
         if (self.alarm_state and not old_alarm_state and
             ((now - self.last_alert) > self.alert_delay)) :
@@ -148,7 +154,7 @@ class Alarm(object):
                                    char_value=char_value,
                                    trip_point=self.trip_point,
                                    comparison=self.comp_name, **kw)
-                
+
             else:
                 sys.stdout.write('Alarm: %s=%s (%s)\n' % (pvname, char_value,
                                                           time.ctime()))

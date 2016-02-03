@@ -12,7 +12,7 @@ This is mostly copied from CA header files
 import ctypes
 import numpy as np
 
-from .utils import (PY64_WINDOWS, PY_MAJOR)
+from .utils import PY64_WINDOWS
 
 # EPICS Constants
 ECA_NORMAL = 1
@@ -81,10 +81,10 @@ DBE_PROPERTY = 8
 
 chid_t = ctypes.c_long
 
-# Note that Windows needs to be told that chid is 8 bytes for 64-bit,
-# except that Python2 is very weird -- using a 4byte chid for 64-bit,
-# but needing a 1 byte padding!
-if PY64_WINDOWS and PY_MAJOR > 2:
+# Note that Windows needs to be told that chid is 8 bytes for 64-bit, except
+# that Python2 is very weird -- using a 4byte chid for 64-bit, but needing a 1
+# byte padding!
+if PY64_WINDOWS:
     chid_t = ctypes.c_int64
 
 short_t = ctypes.c_short
@@ -412,34 +412,16 @@ def cast_args(args):
                 ]
 
 
-if PY64_WINDOWS and PY_MAJOR == 2:
-    # need to add padding on 64-bit Windows for Python2 -- yuck!
-    class event_handler_args(ctypes.Structure):
-        "event handler arguments"
-        _fields_ = [('usr', ctypes.py_object),
-                    ('chid', chid_t),
-                    ('_pad_', ctypes.c_int8),
-                    ('type', ctypes.c_int32),
-                    ('count', ctypes.c_int32),
-                    ('raw_dbr', void_p),
-                    ('status', ctypes.c_int32)]
+class event_handler_args(ctypes.Structure):
+    "event handler arguments"
+    _fields_ = [('usr', ctypes.py_object),
+                ('chid', chid_t),
+                ('type', long_t),
+                ('count', long_t),
+                ('raw_dbr', void_p),
+                ('status', int_t)]
 
-    class connection_args(ctypes.Structure):
-        "connection arguments"
-        _fields_ = [('chid', chid_t),
-                    ('_pad_', ctypes.c_int8),
-                    ('op', long_t)]
-else:
-    class event_handler_args(ctypes.Structure):
-        "event handler arguments"
-        _fields_ = [('usr', ctypes.py_object),
-                    ('chid', chid_t),
-                    ('type', long_t),
-                    ('count', long_t),
-                    ('raw_dbr', void_p),
-                    ('status', int_t)]
-
-    class connection_args(ctypes.Structure):
-        "connection arguments"
-        _fields_ = [('chid', chid_t),
-                    ('op', long_t)]
+class connection_args(ctypes.Structure):
+    "connection arguments"
+    _fields_ = [('chid', chid_t),
+                ('op', long_t)]
