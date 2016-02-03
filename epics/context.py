@@ -5,17 +5,24 @@ import atexit
 import queue
 import threading
 import ctypes
-
+import copy
 from functools import partial
 
 from . import ca
 from . import dbr
+from . import utils
+from . import cast
+from . import errors
 from .callback_registry import CallbackRegistry
 
 logger = logging.getLogger(__name__)
+loop = asyncio.get_event_loop()
 
 
 class CAContextHandler:
+    # Default mask for subscriptions (means update on value changes exceeding
+    # MDEL, and on alarm level changes.) Other option is dbr.DBE_LOG for
+    # archive changes (ie exceeding ADEL)
     default_mask = dbr.DBE_VALUE | dbr.DBE_ALARM
 
     def __init__(self, ctx):
@@ -77,7 +84,8 @@ class CAContextHandler:
                           mask=None):
         with self._sub_lock:
             mask |= self.default_mask
-            ftype = ca.promote_type(chid, use_ctrl=use_ctrl, use_time=use_time)
+            ftype = dbr.promote_type(ca.field_type(chid), use_ctrl=use_ctrl,
+                                     use_time=use_time)
 
             mon_key = (mask, ftype)
             if mon_key in self.ch_monitors:
@@ -211,7 +219,8 @@ class CAContexts:
             context.stop()
             del self.contexts[ctx_id]
 
-        ca.clear_cache()
+        # old finalize ca had multiple flush and wait...
+        ca.flush_io()
         ca.detach_context()
 
     def add_event(self, ctx, event_type, info):
@@ -232,7 +241,32 @@ def get_current_context():
 _cm = CAContexts()
 
 
-@ca.ca_connection_callback
+def _make_callback(func, args):
+    """ make callback function"""
+    if utils.PY64_WINDOWS:
+        # note that ctypes.POINTER is needed for 64-bit Python on Windows
+        args = ctypes.POINTER(args)
+
+        @wraps(func)
+        def wrapped(args):
+            # for 64-bit python on Windows!
+            return func(args.contents)
+        return ctypes.CFUNCTYPE(None, args)(wrapped)
+    else:
+        return ctypes.CFUNCTYPE(None, args)(func)
+
+
+def ca_callback_event(fcn):
+    fcn.ca_callback = _make_callback(fcn, dbr.event_handler_args)
+    return fcn
+
+
+def ca_connection_callback(fcn):
+    fcn.ca_callback = _make_callback(fcn, dbr.connection_args)
+    return fcn
+
+
+@ca_connection_callback
 def _on_connection_event(args):
     global _cm
     info = dict(chid=int(args.chid),
@@ -241,8 +275,53 @@ def _on_connection_event(args):
     _cm.add_event(ca.current_context(), 'connection', info)
 
 
-@ca.ca_callback_event
+@ca_callback_event
 def _on_monitor_event(args):
     global _cm
-    info = ca.cast_monitor_args(args)
+    info = cast.cast_monitor_args(args)
     _cm.add_event(ca.current_context(), 'monitor', info)
+
+
+@ca_callback_event
+def _on_get_event(args):
+    """get_callback event: simply store data contents which will need
+    conversion to python data with _unpack()."""
+    future = args.usr
+    future.ca_callback_done()
+
+    # print("GET EVENT: chid, user ", args.chid, future, hash(future))
+    # print("           type, count ", args.type, args.count)
+    # print("           status ", args.status, dbr.ECA_NORMAL)
+
+    if future.done():
+        print('getevent: hmm, future already done', future, id(future))
+        return
+
+    if future.cancelled():
+        print('future was cancelled', future)
+        return
+
+    if args.status != dbr.ECA_NORMAL:
+        # TODO look up in appdev manual
+        ex = errors.CASeverityException('get', str(args.status))
+        loop.call_soon_threadsafe(future.set_exception, ex)
+    else:
+        loop.call_soon_threadsafe(future.set_result,
+                                  copy.deepcopy(dbr.cast_args(args)))
+
+    # ctypes.pythonapi.Py_DecRef(args.usr)
+
+
+@ca_callback_event
+def _on_put_event(args, **kwds):
+    """set put-has-completed for this channel"""
+    future = args.usr
+    future.ca_callback_done()
+
+    if future.done():
+        print('putevent: hmm, future already done', future, id(future))
+    elif not future.cancelled():
+        print('finishing put event')
+        loop.call_soon_threadsafe(future.set_result, True)
+
+    # ctypes.pythonapi.Py_DecRef(args.usr)

@@ -12,7 +12,7 @@ This is mostly copied from CA header files
 import ctypes
 import numpy as np
 
-from .utils import PY64_WINDOWS
+from .utils import (PY64_WINDOWS, PY_MAJOR)
 
 # EPICS Constants
 ECA_NORMAL = 1
@@ -21,7 +21,7 @@ ECA_IODONE = 339
 ECA_ISATTACHED = 424
 ECA_BADCHID = 410
 
-CS_CONN    = 2
+CS_CONN = 2
 OP_CONN_UP = 6
 OP_CONN_DOWN = 7
 
@@ -30,12 +30,12 @@ CS_NEVER_SEARCH = 4
 # Note that DBR_XXX should be replaced with dbr.XXX
 #
 STRING = 0
-INT    = 1
-SHORT  = 1
-FLOAT  = 2
-ENUM   = 3
-CHAR   = 4
-LONG   = 5
+INT = 1
+SHORT = 1
+FLOAT = 2
+ENUM = 3
+CHAR = 4
+LONG = 5
 DOUBLE = 6
 
 STS_STRING = 7
@@ -47,30 +47,30 @@ STS_CHAR = 11
 STS_LONG = 12
 STS_DOUBLE = 13
 
-TIME_STRING  = 14
-TIME_INT     = 15
-TIME_SHORT   = 15
-TIME_FLOAT   = 16
-TIME_ENUM    = 17
-TIME_CHAR    = 18
-TIME_LONG    = 19
-TIME_DOUBLE  = 20
+TIME_STRING = 14
+TIME_INT = 15
+TIME_SHORT = 15
+TIME_FLOAT = 16
+TIME_ENUM = 17
+TIME_CHAR = 18
+TIME_LONG = 19
+TIME_DOUBLE = 20
 
-CTRL_STRING  = 28
-CTRL_INT     = 29
-CTRL_SHORT   = 29
-CTRL_FLOAT   = 30
-CTRL_ENUM    = 31
-CTRL_CHAR    = 32
-CTRL_LONG    = 33
-CTRL_DOUBLE  = 34
+CTRL_STRING = 28
+CTRL_INT = 29
+CTRL_SHORT = 29
+CTRL_FLOAT = 30
+CTRL_ENUM = 31
+CTRL_CHAR = 32
+CTRL_LONG = 33
+CTRL_DOUBLE = 34
 
-MAX_STRING_SIZE      = 40
-MAX_UNITS_SIZE       =  8
+MAX_STRING_SIZE = 40
+MAX_UNITS_SIZE = 8
 MAX_ENUM_STRING_SIZE = 26
-MAX_ENUMS            = 16
+MAX_ENUMS = 16
 
-#EPICS2UNIX_EPOCH = 631173600.0 - time.timezone
+# EPICS2UNIX_EPOCH = 631173600.0 - time.timezone
 EPICS2UNIX_EPOCH = 631152000.0
 
 # create_subscription mask constants
@@ -79,7 +79,7 @@ DBE_LOG = 2
 DBE_ALARM = 4
 DBE_PROPERTY = 8
 
-chid_t   = ctypes.c_long
+chid_t = ctypes.c_long
 
 # Note that Windows needs to be told that chid is 8 bytes for 64-bit,
 # except that Python2 is very weird -- using a 4byte chid for 64-bit,
@@ -87,23 +87,24 @@ chid_t   = ctypes.c_long
 if PY64_WINDOWS and PY_MAJOR > 2:
     chid_t = ctypes.c_int64
 
-short_t  = ctypes.c_short
+short_t = ctypes.c_short
 ushort_t = ctypes.c_ushort
-int_t    = ctypes.c_int
-uint_t   = ctypes.c_uint
-long_t   = ctypes.c_long
-ulong_t  = ctypes.c_ulong
-float_t  = ctypes.c_float
+int_t = ctypes.c_int
+uint_t = ctypes.c_uint
+long_t = ctypes.c_long
+ulong_t = ctypes.c_ulong
+float_t = ctypes.c_float
 double_t = ctypes.c_double
-byte_t   = ctypes.c_byte
-ubyte_t  = ctypes.c_ubyte
+byte_t = ctypes.c_byte
+ubyte_t = ctypes.c_ubyte
 string_t = ctypes.c_char * MAX_STRING_SIZE
-char_t   = ctypes.c_char
-char_p   = ctypes.c_char_p
-void_p   = ctypes.c_void_p
-py_obj   = ctypes.py_object
+char_t = ctypes.c_char
+char_p = ctypes.c_char_p
+void_p = ctypes.c_void_p
+py_obj = ctypes.py_object
 
 value_offset = None
+
 
 # extended DBR types:
 class TimeStamp(ctypes.Structure):
@@ -129,14 +130,15 @@ class _stat_sev_ts(ctypes.Structure):
                 ('stamp', TimeStamp)
                 ]
 
+
 def make_unixtime(stamp):
     "UNIX timestamp (seconds) from Epics TimeStamp structure"
-    return (EPICS2UNIX_EPOCH + stamp.secs + 1.e-6*int(1.e-3*stamp.nsec))
+    return (EPICS2UNIX_EPOCH + stamp.secs + 1.e-6 * int(1.e-3 * stamp.nsec))
 
 
 class time_string(_stat_sev_ts):
     "dbr time string"
-    _fields_ = [('value', MAX_STRING_SIZE*char_t)]
+    _fields_ = [('value', MAX_STRING_SIZE * char_t)]
 
 
 class time_short(_stat_sev_ts):
@@ -144,20 +146,24 @@ class time_short(_stat_sev_ts):
     _fields_ = [('RISC_pad', short_t),
                 ('value', short_t)]
 
+
 class time_float(_stat_sev_ts):
     "dbr time float"
-    _fields_ =  [('value', float_t)]
+    _fields_ = [('value', float_t)]
+
 
 class time_enum(_stat_sev_ts):
     "dbr time enum"
     _fields_ = [('RISC_pad', short_t),
                 ('value', ushort_t)]
 
+
 class time_char(_stat_sev_ts):
     "dbr time char"
     _fields_ = [('RISC_pad0', short_t),
                 ('RISC_pad1', byte_t),
                 ('value', byte_t)]
+
 
 class time_long(_stat_sev_ts):
     "dbr time long"
@@ -168,6 +174,7 @@ class time_double(_stat_sev_ts):
     "dbr time double"
     _fields_ = [('RISC_pad', int_t),
                 ('value', double_t)]
+
 
 def _ctrl_lims(t):
     # DBR types with full control and graphical fields
@@ -194,9 +201,11 @@ class ctrl_enum(_stat_sev):
                 ('value', ushort_t)
                 ]
 
+
 class ctrl_short(_ctrl_lims(short_t), _stat_sev_units):
     "dbr ctrl short"
     _fields_ = [('value', short_t)]
+
 
 class ctrl_char(_ctrl_lims(byte_t), _stat_sev_units):
     "dbr ctrl long"
@@ -204,9 +213,10 @@ class ctrl_char(_ctrl_lims(byte_t), _stat_sev_units):
                 ('value', ubyte_t)
                 ]
 
+
 class ctrl_long(_ctrl_lims(int_t), _stat_sev_units):
     "dbr ctrl long"
-    _fields_ = [('value', int_t )]
+    _fields_ = [('value', int_t)]
 
 
 class _ctrl_units(_stat_sev):
@@ -214,6 +224,7 @@ class _ctrl_units(_stat_sev):
                 ('RISC_pad', short_t),
                 ('units', char_t * MAX_UNITS_SIZE),
                 ]
+
 
 class ctrl_float(_ctrl_lims(float_t), _ctrl_units):
     "dbr ctrl float"
@@ -235,82 +246,100 @@ NP_Map = {INT: np.int16,
 
 # map of Epics DBR types to ctypes types
 Map = {STRING: string_t,
-       INT:    short_t,
-       FLOAT:  float_t,
-       ENUM:   ushort_t,
-       CHAR:   ubyte_t,
-       LONG:   int_t,
+       INT: short_t,
+       FLOAT: float_t,
+       ENUM: ushort_t,
+       CHAR: ubyte_t,
+       LONG: int_t,
        DOUBLE: double_t,
 
        # TODO: these right?
        STS_STRING: string_t,
-       STS_INT:    short_t,
-       STS_FLOAT:  float_t,
-       STS_ENUM:   ushort_t,
-       STS_CHAR:   ubyte_t,
-       STS_LONG:   int_t,
+       STS_INT: short_t,
+       STS_FLOAT: float_t,
+       STS_ENUM: ushort_t,
+       STS_CHAR: ubyte_t,
+       STS_LONG: int_t,
        STS_DOUBLE: double_t,
 
        TIME_STRING: time_string,
        TIME_INT: time_short,
-       TIME_SHORT:  time_short,
+       TIME_SHORT: time_short,
        TIME_FLOAT: time_float,
-       TIME_ENUM:  time_enum,
-       TIME_CHAR:  time_char,
-       TIME_LONG:  time_long,
+       TIME_ENUM: time_enum,
+       TIME_CHAR: time_char,
+       TIME_LONG: time_long,
        TIME_DOUBLE: time_double,
        # Note: there is no ctrl string in the C definition
-       CTRL_STRING:   time_string,
+       CTRL_STRING: time_string,
        CTRL_SHORT: ctrl_short,
-       CTRL_INT:   ctrl_short,
+       CTRL_INT: ctrl_short,
        CTRL_FLOAT: ctrl_float,
-       CTRL_ENUM:  ctrl_enum,
-       CTRL_CHAR:  ctrl_char,
-       CTRL_LONG:  ctrl_long,
+       CTRL_ENUM: ctrl_enum,
+       CTRL_CHAR: ctrl_char,
+       CTRL_LONG: ctrl_long,
        CTRL_DOUBLE: ctrl_double
        }
 
 
 NativeMap = {
     STRING: STRING,
-    INT:    INT,
-    FLOAT:  FLOAT,
-    ENUM:   ENUM,
-    CHAR:   CHAR,
-    LONG:   LONG,
+    INT: INT,
+    FLOAT: FLOAT,
+    ENUM: ENUM,
+    CHAR: CHAR,
+    LONG: LONG,
     DOUBLE: DOUBLE,
 
     STS_STRING: STRING,
-    STS_INT:    INT,
-    STS_FLOAT:  FLOAT,
-    STS_ENUM:   ENUM,
-    STS_CHAR:   CHAR,
-    STS_LONG:   LONG,
+    STS_INT: INT,
+    STS_FLOAT: FLOAT,
+    STS_ENUM: ENUM,
+    STS_CHAR: CHAR,
+    STS_LONG: LONG,
     STS_DOUBLE: DOUBLE,
 
-    TIME_STRING:  STRING,
-    TIME_INT:     INT,
-    TIME_SHORT:   SHORT,
-    TIME_FLOAT:   FLOAT,
-    TIME_ENUM:    ENUM,
-    TIME_CHAR:    CHAR,
-    TIME_LONG:    LONG,
-    TIME_DOUBLE:  DOUBLE,
+    TIME_STRING: STRING,
+    TIME_INT: INT,
+    TIME_SHORT: SHORT,
+    TIME_FLOAT: FLOAT,
+    TIME_ENUM: ENUM,
+    TIME_CHAR: CHAR,
+    TIME_LONG: LONG,
+    TIME_DOUBLE: DOUBLE,
 
     # Note: there is no ctrl string in the C definition
     CTRL_STRING: TIME_STRING,  # <-- correct
-    CTRL_SHORT:  SHORT,
-    CTRL_INT:    INT,
-    CTRL_FLOAT:  FLOAT,
-    CTRL_ENUM:   ENUM,
-    CTRL_CHAR:   CHAR,
-    CTRL_LONG:   LONG,
+    CTRL_SHORT: SHORT,
+    CTRL_INT: INT,
+    CTRL_FLOAT: FLOAT,
+    CTRL_ENUM: ENUM,
+    CTRL_CHAR: CHAR,
+    CTRL_LONG: LONG,
     CTRL_DOUBLE: DOUBLE,
 }
+
 
 def native_type(ftype):
     "return native field type from TIME or CTRL variant"
     return NativeMap[ftype]
+
+
+def promote_type(ftype, use_time=False, use_ctrl=False):
+    """Promotes a native field type to its TIME or CTRL variant.
+
+    Returns
+    -------
+    ftype : int
+        the promoted field value.
+    """
+    if use_ctrl:
+        ftype += CTRL_STRING
+    elif use_time:
+        ftype += TIME_STRING
+    if ftype == CTRL_STRING:
+        ftype = TIME_STRING
+    return ftype
 
 
 def Name(ftype, reverse=False):
@@ -353,7 +382,8 @@ def Name(ftype, reverse=False):
         name = ftype.upper()
         if name in list(m.values()):
             for key, val in m.items():
-                if name == val: return key
+                if name == val:
+                    return key
     return m.get(ftype, 'unknown')
 
 
@@ -381,35 +411,35 @@ def cast_args(args):
                             ctypes.POINTER(args.count * Map[ftype])).contents
                 ]
 
-class event_handler_args(ctypes.Structure):
-    "event handler arguments"
-    _fields_ = [('usr',     ctypes.py_object),
-                ('chid',    chid_t),
-                ('type',    long_t),
-                ('count',   long_t),
-                ('raw_dbr', void_p),
-                ('status',  int_t)]
-
-class connection_args(ctypes.Structure):
-    "connection arguments"
-    _fields_ = [('chid', chid_t),
-                ('op', long_t)]
 
 if PY64_WINDOWS and PY_MAJOR == 2:
     # need to add padding on 64-bit Windows for Python2 -- yuck!
     class event_handler_args(ctypes.Structure):
         "event handler arguments"
-        _fields_ = [('usr',     ctypes.py_object),
-                    ('chid',    chid_t),
-                    ('_pad_',   ctypes.c_int8),
-                    ('type',    ctypes.c_int32),
-                    ('count',   ctypes.c_int32),
+        _fields_ = [('usr', ctypes.py_object),
+                    ('chid', chid_t),
+                    ('_pad_', ctypes.c_int8),
+                    ('type', ctypes.c_int32),
+                    ('count', ctypes.c_int32),
                     ('raw_dbr', void_p),
-                    ('status',  ctypes.c_int32)]
+                    ('status', ctypes.c_int32)]
 
     class connection_args(ctypes.Structure):
         "connection arguments"
         _fields_ = [('chid', chid_t),
-                    ('_pad_',ctypes.c_int8),
-                    ('op',   long_t)]
+                    ('_pad_', ctypes.c_int8),
+                    ('op', long_t)]
+else:
+    class event_handler_args(ctypes.Structure):
+        "event handler arguments"
+        _fields_ = [('usr', ctypes.py_object),
+                    ('chid', chid_t),
+                    ('type', long_t),
+                    ('count', long_t),
+                    ('raw_dbr', void_p),
+                    ('status', int_t)]
 
+    class connection_args(ctypes.Structure):
+        "connection arguments"
+        _fields_ = [('chid', chid_t),
+                    ('op', long_t)]

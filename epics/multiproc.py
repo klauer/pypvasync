@@ -17,10 +17,11 @@ Channel Access or using Epics process variables
 
 import multiprocessing as mp
 from multiprocessing.pool import Pool
-from .ca import clear_cache
+from .context import get_contexts
 
 
-__all__ = ['CAProcess', 'CAPool', 'clear_ca_cache']
+__all__ = ['CAProcess', 'CAPool']
+
 
 class CAProcess(mp.Process):
     """
@@ -30,11 +31,14 @@ class CAProcess(mp.Process):
     be doing CA calls!
     """
     def __init__(self, **kws):
-        mp.Process.__init__(self, **kws)
+        super().__init__(**kws)
 
     def run(self):
-        clear_cache()
-        mp.Process.run(self)
+        cm = get_contexts()
+        # TODO this is definitely wrong
+        cm.stop()
+        cm.add_context()
+        super().run()
 
 
 class CAPool(Pool):
@@ -44,4 +48,4 @@ class CAPool(Pool):
     def __init__(self, *args, **kwargs):
         self.Process = CAProcess
 
-        Pool.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)

@@ -3,7 +3,6 @@ String and data utils, where implementation differs between Python 2 & 3
 """
 import os
 import sys
-from copy import deepcopy
 from platform import architecture
 from . import utils3 as utils_mod
 

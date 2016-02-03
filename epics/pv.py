@@ -11,12 +11,13 @@ import ctypes
 import copy
 import asyncio
 from math import log10
-from collections import defaultdict
 
 from . import ca
 from . import dbr
+from . import config
 from .context import get_current_context
 from .utils import is_string
+from . import coroutines
 
 _PVcache_ = {}
 
@@ -136,9 +137,9 @@ class PV(object):
         self._context.subscribe_connect(func=self.__on_connect,
                                         chid=self.chid)
 
-        self.ftype = ca.promote_type(self.chid,
-                                     use_ctrl=self.form == 'ctrl',
-                                     use_time=self.form == 'time')
+        self.ftype = dbr.promote_type(ca.field_type(self.chid),
+                                      use_ctrl=self.form == 'ctrl',
+                                      use_time=self.form == 'time')
         self._args['type'] = dbr.Name(self.ftype).lower()
 
         pvid = self._pvid
@@ -173,16 +174,16 @@ class PV(object):
             self._args['access'] = ca.access(self.chid)
             self._args['read_access'] = (1 == ca.read_access(self.chid))
             self._args['write_access'] = (1 == ca.write_access(self.chid))
-            self.ftype = ca.promote_type(self.chid,
-                                         use_ctrl=self.form == 'ctrl',
-                                         use_time=self.form == 'time')
+            self.ftype = dbr.promote_type(ca.field_type(self.chid),
+                                          use_ctrl=self.form == 'ctrl',
+                                          use_time=self.form == 'time')
             _ftype_ = dbr.Name(self.ftype).lower()
             self._args['type'] = _ftype_
             self._args['typefull'] = _ftype_
             self._args['ftype'] = dbr.Name(_ftype_, reverse=True)
 
             if self.auto_monitor is None:
-                self.auto_monitor = count < ca.AUTOMONITOR_MAXLENGTH
+                self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
             if self._monref is None and self.auto_monitor:
                 # you can explicitly request a subscription mask
                 # (ie dbr.DBE_ALARM|dbr.DBE_LOG) by passing it as the
@@ -272,11 +273,11 @@ class PV(object):
                 (not self.auto_monitor) or
                 (self._args['value'] is None) or
                 (count is not None and count > len(self._args['value']))):
-            self._args['value'] = yield from ca.get(self.chid,
-                                                    ftype=self.ftype,
-                                                    count=count,
-                                                    timeout=timeout,
-                                                    as_numpy=as_numpy)
+            self._args['value'] = yield from coroutines.get(self.chid,
+                                                            ftype=self.ftype,
+                                                            count=count,
+                                                            timeout=timeout,
+                                                            as_numpy=as_numpy)
 
         val = self._args['value']
         if as_string:
@@ -322,10 +323,9 @@ class PV(object):
                         break
         if use_complete and callback is None:
             callback = self.__putCallbackStub
-        yield from ca.put(self.chid, value,
-                          wait=wait, timeout=timeout,
-                          callback=callback,
-                          callback_data=callback_data)
+        yield from coroutines.put(self.chid, value, wait=wait, timeout=timeout,
+                                  callback=callback,
+                                  callback_data=callback_data)
 
     def __putCallbackStub(self, pvname=None, **kws):
         "null put-calback, so that the put_complete attribute is valid"
@@ -338,7 +338,7 @@ class PV(object):
             self._args['char_value'] = 'None'
             return 'None'
         ftype = self._args['ftype']
-        ntype = ca.native_type(ftype)
+        ntype = dbr.native_type(ftype)
         if ntype == dbr.STRING:
             self._args['char_value'] = val
             return val
@@ -390,8 +390,8 @@ class PV(object):
     def get_ctrlvars(self, timeout=5, warn=True):
         "get control values for variable"
         yield from self.wait_for_connection()
-        kwds = yield from ca.get_ctrlvars(self.chid, timeout=timeout,
-                                          warn=warn)
+        kwds = yield from coroutines.get_ctrlvars(self.chid, timeout=timeout,
+                                                  warn=warn)
         self._args.update(kwds)
         return kwds
 
@@ -399,8 +399,8 @@ class PV(object):
     def get_timevars(self, timeout=5, warn=True):
         "get time values for variable"
         yield from self.wait_for_connection()
-        kwds = yield from ca.get_timevars(self.chid, timeout=timeout,
-                                          warn=warn)
+        kwds = yield from coroutines.get_timevars(self.chid, timeout=timeout,
+                                                  warn=warn)
         self._args.update(kwds)
         return kwds
 
@@ -699,14 +699,6 @@ class PV(object):
     def info(self):
         "info string"
         return self._getinfo()
-
-    @property
-    def put_complete(self):
-        "returns True if a put-with-wait has completed"
-        putdone_data = ca._put_done.get(self.pvname, None)
-        if putdone_data is not None:
-            return putdone_data[0]
-        return True
 
     def __repr__(self):
         "string representation"
