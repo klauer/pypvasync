@@ -129,6 +129,8 @@ void_p = ctypes.c_void_p
 py_obj = ctypes.py_object
 string_t = ctypes.c_char * MAX_STRING_SIZE
 
+# value_offset is set when the CA library connects, indicating the byte offset
+# into the response where the first native type element is
 value_offset = None
 
 
@@ -371,33 +373,6 @@ def promote_type(ftype, use_time=False, use_ctrl=False):
     if ftype == ChType.CTRL_STRING:
         return ChType.TIME_STRING
     return ftype
-
-
-def cast_args(args):
-    """returns casted array contents
-
-    returns: [dbr_ctrl or dbr_time struct,
-              count * native_type structs]
-
-    If data is already of a native_type, the first
-    value in the list will be None.
-    """
-    ftype = args.type
-    ftype_c = _ftype_to_ctype[ftype]
-    ntype = native_type(ftype)
-    if ftype != ntype:
-        native_start = args.raw_dbr + value_offset[ftype]
-        ntype_c = _ftype_to_ctype[ntype]
-        return [ctypes.cast(args.raw_dbr,
-                            ctypes.POINTER(ftype_c)).contents,
-                ctypes.cast(native_start,
-                            ctypes.POINTER(args.count * ntype_c)).contents
-                ]
-    else:
-        return [None,
-                ctypes.cast(args.raw_dbr,
-                            ctypes.POINTER(args.count * ftype_c)).contents
-                ]
 
 
 class event_handler_args(ctypes.Structure):

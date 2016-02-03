@@ -13,7 +13,7 @@ from . import dbr
 from . import utils
 from . import cast
 from . import errors
-from .callback_registry import CallbackRegistry
+from .callback_registry import ChannelCallbackRegistry
 
 logger = logging.getLogger(__name__)
 loop = asyncio.get_event_loop()
@@ -36,8 +36,8 @@ class CAContextHandler:
         self._event_queue = queue.Queue()
 
         sigs = ['connection', 'monitor']
-        self._cbreg = CallbackRegistry(allowed_sigs=sigs,
-                                       ignore_exceptions=True)
+        self._cbreg = ChannelCallbackRegistry(allowed_sigs=sigs,
+                                              ignore_exceptions=True)
         self.channel_to_pv = {}
         self.pv_to_channel = {}
         self.ch_monitors = {}
@@ -308,7 +308,7 @@ def _on_get_event(args):
         loop.call_soon_threadsafe(future.set_exception, ex)
     else:
         loop.call_soon_threadsafe(future.set_result,
-                                  copy.deepcopy(dbr.cast_args(args)))
+                                  copy.deepcopy(cast.cast_args(args)))
 
     # TODO
     # ctypes.pythonapi.Py_DecRef(args.usr)

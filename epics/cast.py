@@ -167,7 +167,7 @@ def get_put_info(chid, value):
 def cast_monitor_args(args):
     """Event Handler for monitor events: not intended for use"""
 
-    value = dbr.cast_args(args)
+    value = cast_args(args)
     kwds = {'ftype': args.type, 'count': args.count, 'chid': args.chid,
             'status': args.status}
 
@@ -201,3 +201,30 @@ def cast_monitor_args(args):
     value = unpack(args.chid, value, count=args.count, ftype=args.type)
     kwds['value'] = value
     return kwds
+
+
+def cast_args(args):
+    """returns casted array contents
+
+    returns: [dbr_ctrl or dbr_time struct,
+              count * native_type structs]
+
+    If data is already of a native_type, the first value in the list will be
+    None.
+    """
+    ftype = args.type
+    ftype_c = dbr._ftype_to_ctype[ftype]
+    ntype = native_type(ftype)
+    if ftype != ntype:
+        native_start = args.raw_dbr + dbr.value_offset[ftype]
+        ntype_c = dbr._ftype_to_ctype[ntype]
+        return [ctypes.cast(args.raw_dbr,
+                            ctypes.POINTER(ftype_c)).contents,
+                ctypes.cast(native_start,
+                            ctypes.POINTER(args.count * ntype_c)).contents
+                ]
+    else:
+        return [None,
+                ctypes.cast(args.raw_dbr,
+                            ctypes.POINTER(args.count * ftype_c)).contents
+                ]

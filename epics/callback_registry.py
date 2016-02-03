@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # 'monitor', chid, mask, ftype
 
 
-class CallbackRegistry:
+class ChannelCallbackRegistry:
     def __init__(self, ignore_exceptions=False, allowed_sigs=None):
         self.ignore_exceptions = ignore_exceptions
         self.allowed_sigs = allowed_sigs
