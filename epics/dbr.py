@@ -38,6 +38,15 @@ CHAR   = 4
 LONG   = 5
 DOUBLE = 6
 
+STS_STRING = 7
+STS_SHORT = 8
+STS_INT = 8
+STS_FLOAT = 9
+STS_ENUM = 10
+STS_CHAR = 11
+STS_LONG = 12
+STS_DOUBLE = 13
+
 TIME_STRING  = 14
 TIME_INT     = 15
 TIME_SHORT   = 15
@@ -233,6 +242,15 @@ Map = {STRING: string_t,
        LONG:   int_t,
        DOUBLE: double_t,
 
+       # TODO: these right?
+       STS_STRING: string_t,
+       STS_INT:    short_t,
+       STS_FLOAT:  float_t,
+       STS_ENUM:   ushort_t,
+       STS_CHAR:   ubyte_t,
+       STS_LONG:   int_t,
+       STS_DOUBLE: double_t,
+
        TIME_STRING: time_string,
        TIME_INT: time_short,
        TIME_SHORT:  time_short,
@@ -252,16 +270,49 @@ Map = {STRING: string_t,
        CTRL_DOUBLE: ctrl_double
        }
 
+
+NativeMap = {
+    STRING: STRING,
+    INT:    INT,
+    FLOAT:  FLOAT,
+    ENUM:   ENUM,
+    CHAR:   CHAR,
+    LONG:   LONG,
+    DOUBLE: DOUBLE,
+
+    STS_STRING: STRING,
+    STS_INT:    INT,
+    STS_FLOAT:  FLOAT,
+    STS_ENUM:   ENUM,
+    STS_CHAR:   CHAR,
+    STS_LONG:   LONG,
+    STS_DOUBLE: DOUBLE,
+
+    TIME_STRING:  STRING,
+    TIME_INT:     INT,
+    TIME_SHORT:   SHORT,
+    TIME_FLOAT:   FLOAT,
+    TIME_ENUM:    ENUM,
+    TIME_CHAR:    CHAR,
+    TIME_LONG:    LONG,
+    TIME_DOUBLE:  DOUBLE,
+
+    # Note: there is no ctrl string in the C definition
+    CTRL_STRING: TIME_STRING,  # <-- correct
+    CTRL_SHORT:  SHORT,
+    CTRL_INT:    INT,
+    CTRL_FLOAT:  FLOAT,
+    CTRL_ENUM:   ENUM,
+    CTRL_CHAR:   CHAR,
+    CTRL_LONG:   LONG,
+    CTRL_DOUBLE: DOUBLE,
+}
+
 def native_type(ftype):
     "return native field type from TIME or CTRL variant"
-    if ftype == CTRL_STRING:
-        ftype = TIME_STRING
-    ntype = ftype
-    if ftype > CTRL_STRING:
-        ntype -= CTRL_STRING
-    elif ftype >= TIME_STRING:
-        ntype -= TIME_STRING
-    return ntype
+    print('native_type', ftype, type(ftype))
+    return NativeMap[ftype]
+
 
 def Name(ftype, reverse=False):
     """ convert integer data type to dbr Name, or optionally reverse that
@@ -297,6 +348,7 @@ def Name(ftype, reverse=False):
                 if name == val: return key
     return m.get(ftype, 'unknown')
 
+
 def cast_args(args):
     """returns casted array contents
 
@@ -307,9 +359,6 @@ def cast_args(args):
     value in the list will be None.
     """
     ftype = args.type
-    if ftype not in Map:
-        ftype = double_t
-
     ntype = native_type(ftype)
     if ftype != ntype:
         native_start = args.raw_dbr + value_offset[ftype]

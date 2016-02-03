@@ -15,7 +15,6 @@ strjoin = utils_mod.strjoin
 is_string = utils_mod.is_string
 is_string_or_bytes = utils_mod.is_string_or_bytes
 ascii_string = utils_mod.ascii_string
-memcopy = deepcopy
 
 PY64_WINDOWS = (os.name == 'nt' and architecture()[0].startswith('64'))
 PY_MAJOR, PY_MINOR = sys.version_info[:2]

@@ -14,6 +14,7 @@ from math import log10
 
 from . import ca
 from . import dbr
+from .context import get_current_context
 from .utils import is_string
 
 _PVcache_ = {}
@@ -37,9 +38,7 @@ def get_pv(pvname, form='time', connect=False,
 
     thispv = None
     if context is None:
-        context = ca.initial_context
-        if context is None:
-            context = ca.current_context()
+        context = get_current_context()
         if (pvname, form, context) in _PVcache_:
             thispv = _PVcache_[(pvname, form, context)]
 
@@ -51,7 +50,6 @@ def get_pv(pvname, form='time', connect=False,
     if connect:
         yield from thispv.wait_for_connection()
         while not thispv.connected:
-            ca.poll()
             if time.time() - start_time > timeout:
                 break
         if not thispv.connected:
@@ -86,11 +84,14 @@ class PV(object):
       >>> p.value          # pv value (can be set or get)
       >>> p.char_value     # string representation of pv value
       >>> p.count          # number of elements in array pvs
-      >>> p.type           # EPICS data type: 'string','double','enum','long',..
+      >>> p.type           # EPICS data type:
+                           #  'string','double','enum','long',..
 """
 
-    _fmtsca = "<PV '%(pvname)s', count=%(count)i, type=%(typefull)s, access=%(access)s>"
-    _fmtarr = "<PV '%(pvname)s', count=%(count)i/%(nelm)i, type=%(typefull)s, access=%(access)s>"
+    _fmtsca = ("<PV '%(pvname)s', count=%(count)i, type=%(typefull)s, "
+               " access=%(access)s>")
+    _fmtarr = ("<PV '%(pvname)s', count=%(count)i/%(nelm)i, "
+               "type=%(typefull)s, access=%(access)s>")
     _fields = ('pvname', 'value', 'char_value', 'status', 'ftype', 'chid',
                'host', 'count', 'access', 'write_access', 'read_access',
                'severity', 'timestamp', 'precision', 'units', 'enum_strs',
@@ -133,40 +134,38 @@ class PV(object):
             self.callbacks[0] = (callback, {})
 
         self.chid = None
-        if ca.current_context() is None:
-            ca.use_initial_context()
-        self.context = ca.current_context()
-
         self._args['chid'] = ca.create_channel(self.pvname,
                                                callback=self.__on_connect)
+        self.context = get_current_context()
+        self.context.subscribe(sig='connection', func=self.__on_connect,
+                               chid=self._args['chid'])
+
         self.chid = self._args['chid']
         self.ftype = ca.promote_type(self.chid,
                                      use_ctrl=self.form == 'ctrl',
                                      use_time=self.form == 'time')
         self._args['type'] = dbr.Name(self.ftype).lower()
 
-        pvid = (self.pvname, self.form, self.context)
+        pvid = self._pvid
         if pvid not in _PVcache_:
             _PVcache_[pvid] = self
 
-    def force_connect(self, pvname=None, chid=None, conn=True, **kws):
+    @property
+    def _pvid(sef):
+        return (self.pvname, self.form, self.context)
+
+    def force_connect(self, pvname=None, chid=None, connected=True, **kws):
         if chid is None:
             chid = self.chid
         if isinstance(chid, ctypes.c_long):
             chid = chid.value
         self._args['chid'] = self.chid = chid
-        self.__on_connect(pvname=pvname, chid=chid, conn=conn, **kws)
+        self.__on_connect(pvname=pvname, chid=chid, connected=connected, **kws)
 
-    def __on_connect(self, pvname=None, chid=None, conn=True):
+    def __on_connect(self, pvname=None, chid=None, connected=True):
         "callback for connection events"
-        # occassionally chid is still None (ie if a second PV is created
-        # while __on_connect is still pending for the first one.)
-        # Just return here, and connection will happen later
-        if self.chid is None and chid is None:
-            ca.poll(5.e-4)
-            return
-        if conn:
-            ca.poll()
+        print('on connect')
+        if not connected:
             self.chid = self._args['chid'] = dbr.chid_t(chid)
             try:
                 count = ca.element_count(self.chid)
@@ -197,62 +196,43 @@ class PV(object):
                 mask = None
                 if isinstance(self.auto_monitor, int):
                     mask = self.auto_monitor
-                self._monref = ca.create_subscription(self.chid,
-                                                      use_ctrl=(
-                                                          self.form == 'ctrl'),
-                                                      use_time=(
-                                                          self.form == 'time'),
-                                                      callback=self.__on_changes,
-                                                      mask=mask)
+                use_ctrl = (self.form == 'ctrl')
+                use_time = (self.form == 'time')
+                ref = ca.create_subscription(self.chid, use_ctrl=use_ctrl,
+                                             use_time=use_time,
+                                             callback=self.__on_changes,
+                                             mask=mask)
+                self._monref = ref
 
         for conn_cb in self.connection_callbacks:
             if hasattr(conn_cb, '__call__'):
-                conn_cb(pvname=self.pvname, conn=conn, pv=self)
-            elif not conn and self.verbose:
+                conn_cb(pvname=self.pvname, connected=connected, pv=self)
+            elif not connected and self.verbose:
                 print("PV '%s' disconnected." % pvname)
 
         # waiting until the very end until to set self.connected prevents
         # threads from thinking a connection is complete when it is actually
         # still in progress.
-        self.connected = conn
+        self.connected = connected
         return
 
     @asyncio.coroutine
     def wait_for_connection(self, timeout=None):
         """wait for a connection that started with connect() to finish"""
 
-        # make sure we're in the CA context used to create this PV
-        if self.context != ca.current_context():
-            ca.attach_context(self.context)
-
         if not self.connected:
             if timeout is None:
                 timeout = self.connection_timeout
-            # TODO yield from ca.connect_channel(self.chid, timeout=timeout)
-            ca.connect_channel(self.chid, timeout=timeout)
 
-        self._conn_started = True
+            yield from self.context.connect_channel(self.chid, timeout=timeout)
 
-        if not self._conn_started:
-            self.connect()
-
-        if not self.connected:
-            if timeout is None:
-                timeout = self.connection_timeout
-                if timeout is None:
-                    timeout = ca.DEFAULT_CONNECTION_TIMEOUT
-            start_time = time.time()
-            while (not self.connected and
-                   time.time() - start_time < timeout):
-                ca.poll()
-
-        if not self.connected:
-            raise asyncio.TimeoutError('Connection timeout')
+        return True
 
     @asyncio.coroutine
     def connect(self, timeout=None):
         "check that a PV is connected, forcing a connection if needed"
         value = yield from self.wait_for_connection()
+        print('wait for conn returned')
         return value
 
     @asyncio.coroutine
@@ -263,10 +243,6 @@ class PV(object):
         self.connected = False
         self._conn_started = False
         yield from self.wait_for_connection()
-
-    def poll(self, evt=1.e-4, iot=1.0):
-        "poll for changes"
-        ca.poll(evt=evt, iot=iot)
 
     @asyncio.coroutine
     def get(self, count=None, as_string=False, as_numpy=True,
@@ -504,7 +480,6 @@ class PV(object):
         """remove a callback by index"""
         if index in self.callbacks:
             self.callbacks.pop(index)
-            ca.poll()
 
     def clear_callbacks(self):
         "clear all callbacks"
@@ -564,13 +539,14 @@ class PV(object):
 
         if self._monref is not None:
             msg = 'PV is internally monitored'
-            out.append('   %s, with %i user-defined callbacks:' % (msg,
-                                                                   len(self.callbacks)))
+            out.append('   %s, with %i user-defined callbacks:'
+                       '' % (msg, len(self.callbacks)))
             if len(self.callbacks) > 0:
                 for nam in sorted(self.callbacks.keys()):
                     cback = self.callbacks[nam][0]
-                    out.append('      %s in file %s' % (cback.func_name,
-                                                        cback.func_code.co_filename))
+                    out.append('      %s in file %s'
+                               '' % (cback.func_name,
+                                     cback.func_code.co_filename))
         else:
             out.append('   PV is NOT internally monitored')
         out.append('=============================')
@@ -755,8 +731,8 @@ class PV(object):
         "disconnect PV"
         self.connected = False
 
-        ctx = ca.current_context()
-        pvid = (self.pvname, self.form, ctx)
+        ctx = self.context()
+        pvid = self._pvid
         if pvid in _PVcache_:
             _PVcache_.pop(pvid)
 
@@ -775,7 +751,6 @@ class PV(object):
             except:
                 pass
 
-        ca.poll(evt=1.e-3, iot=1.0)
         self.callbacks = {}
 
     def __del__(self):

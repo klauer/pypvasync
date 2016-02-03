@@ -25,10 +25,10 @@ import atexit
 import warnings
 from threading import Thread
 from functools import partial
-
+from copy import deepcopy
 
 from .utils import (STR2BYTES, BYTES2STR, NULLCHAR, NULLCHAR_2,
-                    strjoin, memcopy, is_string, is_string_or_bytes,
+                    strjoin, is_string, is_string_or_bytes,
                     ascii_string, PY64_WINDOWS)
 
 import numpy
@@ -90,6 +90,11 @@ def ca_callback_event(fcn):
     return fcn
 
 
+def ca_connection_callback(fcn):
+    fcn.ca_callback = _make_callback(fcn, dbr.connection_args)
+    return fcn
+
+
 # holder for shared library
 libca = None
 initial_context = None
@@ -131,7 +136,9 @@ class ChannelAccessException(Exception):
 
     def __init__(self, *args):
         super().__init__(*args)
-        sys.excepthook(*sys.exc_info())
+        exctype, value, traceback = sys.exc_info()
+        if exctype is not None:
+            sys.excepthook(exctype, value, traceback)
 
 
 class CASeverityException(Exception):
@@ -299,7 +306,7 @@ def finalize_libca(maxtime=10.0):
     try:
         start_time = time.time()
         flush_io()
-        poll()
+        # poll()
         for ctx in _cache.values():
             for key in list(ctx.keys()):
                 ctx.pop(key)
@@ -308,7 +315,7 @@ def finalize_libca(maxtime=10.0):
         while (flush_count < 5 and
                time.time() - start_time < maxtime):
             flush_io()
-            poll()
+            # poll()
             flush_count += 1
         context_destroy()
         libca = None
@@ -333,7 +340,7 @@ def show_cache(print_out=True):
                 vname = (vname + ' ' * 15)[:15]
             out.append(" %s %s/%s  %s" % (vname, repr(chid),
                                           repr(context),
-                                          isConnected(chid)))
+                                          is_connected(chid)))
     out = strjoin('\n', out)
     if print_out:
         print(out)
@@ -399,19 +406,17 @@ def withCHID(fcn):
     # data of _cache) that could be tested here.  For now, that
     # seems slightly 'not low-level' for this module.
     @functools.wraps(fcn)
-    def wrapper(*args, **kwds):
+    def wrapper(chid):
         "withCHID wrapper"
-        if len(args) > 0:
-            chid = args[0]
-            args = list(args)
-            if isinstance(chid, int):
-                args[0] = chid = dbr.chid_t(args[0])
-            if not isinstance(chid, dbr.chid_t):
-                msg = "%s: not a valid chid %s %s args %s kwargs %s!" % (
-                    (fcn.__name__, chid, type(chid), args, kwds))
-                raise ChannelAccessException(msg)
+        if isinstance(chid, int):
+            chid = dbr.chid_t(chid)
 
-        return fcn(*args, **kwds)
+        if not isinstance(chid, dbr.chid_t):
+            msg = "%s: not a valid chid %s %s" % (
+                (fcn.__name__, chid, type(chid)))
+            raise ChannelAccessException(msg)
+
+        return fcn(chid)
     return wrapper
 
 
@@ -432,7 +437,7 @@ def withConnectedCHID(fcn):
             if not isinstance(chid, dbr.chid_t):
                 raise ChannelAccessException("%s: not a valid chid!" %
                                              (fcn.__name__))
-            if not isConnected(chid):
+            if not is_connected(chid):
                 timeout = kwds.get('timeout', DEFAULT_CONNECTION_TIMEOUT)
                 fmt = "%s() timed out waiting '%s' to connect (%d seconds)"
                 if not connect_channel(chid, timeout=timeout):
@@ -537,53 +542,16 @@ def wait_on_connection(chid, *, ctx=None):
     pass
 
 
+@ca_connection_callback
 def _onConnectionEvent(args):
-    """set flag in cache holding whteher channel is
-    connected. if provided, run a user-function"""
-    # for 64-bit python on Windows!
-    ctx = current_context()
-    conn = (args.op == dbr.OP_CONN_UP)
-    global _cache
+    # TODO circular imports
+    from .context import get_contexts
 
-    if ctx is None and len(_cache.keys()) > 0:
-        ctx = list(_cache.keys())[0]
-    if ctx not in _cache:
-        _cache[ctx] = {}
+    info = dict(chid=int(args.chid),
+                connected=(args.op == dbr.OP_CONN_UP)
+                )
 
-    # search for PV in any context...
-    pv_found = False
-    for context in _cache:
-        pvname = name(args.chid)
-
-        if pvname in _cache[context]:
-            pv_found = True
-            break
-
-    # logging.debug("ConnectionEvent %s/%i/%i " % (pvname, args.chid, conn))
-    # print("ConnectionEvent %s/%i/%i " % (pvname, args.chid, conn))
-    if not pv_found:
-        _cache[ctx][pvname] = {'conn': False, 'chid': args.chid,
-                               'ts': 0, 'failures': 0, 'value': None,
-                               'callbacks': []}
-
-    # set connection time, run connection callbacks
-    # in all contexts
-    for context, cvals in _cache.items():
-        if pvname in cvals:
-            entry = cvals[pvname]
-            ichid = entry['chid']
-            if isinstance(entry['chid'], dbr.chid_t):
-                ichid = entry['chid'].value
-
-            if int(ichid) == int(args.chid):
-                chid = args.chid
-                entry.update({'chid': chid, 'conn': conn,
-                              'ts': time.time(), 'failures': 0})
-                for callback in entry.get('callbacks', []):
-                    poll()
-                    if callable(callback):
-                        # print( ' ==> connection callback ', callback, conn)
-                        callback(pvname=pvname, chid=chid, conn=conn)
+    get_contexts().add_event(current_context(), 'connection', info)
 
 
 @ca_callback_event
@@ -611,7 +579,7 @@ def _onGetEvent(args):
         loop.call_soon_threadsafe(future.set_exception, ex)
     else:
         loop.call_soon_threadsafe(future.set_result,
-                                  memcopy(dbr.cast_args(args)))
+                                  deepcopy(dbr.cast_args(args)))
 
     # ctypes.pythonapi.Py_DecRef(args.usr)
 
@@ -789,17 +757,6 @@ def pend_event(timeout=1.e-5):
 
 
 @withCA
-def poll(evt=1.e-5, iot=1.0):
-    """a convenience function which is equivalent to::
-       pend_event(evt)
-       pend_io_(iot)
-
-    """
-    pend_event(evt)
-    return pend_io(iot)
-
-
-@withCA
 def test_io():
     """test if IO is complete: returns True if it is"""
     return (dbr.ECA_IODONE == libca.ca_test_io())
@@ -808,7 +765,7 @@ def test_io():
 
 
 @withCA
-def create_channel(pvname, connect=False, auto_cb=True, callback=None):
+def create_channel(pvname, auto_cb=True, callback=None):
     """ create a Channel for a given pvname
 
     creates a channel, returning the Channel ID ``chid`` used by other
@@ -818,8 +775,6 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
     ----------
     pvname :  string
         the name of the PV for which a channel should be created.
-    connect : bool
-        whether to (try to) connect to PV as soon as possible.
     auto_cb : bool
         whether to automatically use an internal connection callback.
     callback : callable or ``None``
@@ -838,13 +793,9 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
     accept
     keyword arguments of
 
-         ===========  =============================
-         keyword      meaning
-         ===========  =============================
           `pvname`    name of PV
           `chid`      Channel ID
           `conn`      whether channel is connected
-         ===========  =============================
 
 
     2. If `auto_cb` is ``True``, an internal connection callback is used so
@@ -857,10 +808,6 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
 
     """
     #
-    # Note that _CB_CONNECT (defined above) is a global variable, holding a
-    # reference to _onConnectionEvent:  This is really the connection callback
-    # that is run -- the callack here is stored in the _cache and called by
-    # _onConnectionEvent.
     pvn = STR2BYTES(pvname)
     ctx = current_context()
     global _cache
@@ -896,76 +843,8 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
     chid_key = chid
     if isinstance(chid_key, dbr.chid_t):
         chid_key = chid.value
-    _namecache[chid_key] = BYTES2STR(pvn)
-    # print("CREATE Channel ", pvn, chid)
-    if connect:
-        connect_channel(chid)
-    if conncb != 0:
-        poll()
-    return chid
 
-
-@withCHID
-def connect_channel(chid, timeout=None, verbose=False):
-    """connect to a channel, waiting up to timeout for a
-    channel to connect.  It returns the connection state,
-    ``True`` or ``False``.
-
-    This is usually not needed, as implicit connection will be done
-    when needed in most cases.
-
-    Parameters
-    ----------
-    chid : ctypes.c_long
-        Channel ID
-    timeout : float
-        maximum time to wait for connection.
-    verbose : bool
-        whether to print out debugging information
-
-    Returns
-    -------
-    connection_state : bool
-         that is, whether the Channel is connected
-
-    Notes
-    -----
-    1. If *timeout* is ``None``, the value of
-    :data:`DEFAULT_CONNECTION_TIMEOUT` is used (defaults to 2.0 seconds).
-
-    2. Normally, channels will connect in milliseconds, and the connection
-    callback will succeed on the first attempt.
-
-    3. For un-connected Channels (that are nevertheless queried), the 'ts'
-    (timestamp of last connection attempt) and 'failures' (number of failed
-    connection attempts) from the :data:`_cache` will be used to prevent
-    spending too much time waiting for a connection that may never happen.
-
-    """
-    if verbose:
-        print(' connect channel -> %s %s %s ' %
-              (repr(chid), repr(state(chid)), repr(dbr.CS_CONN)))
-    conn = (state(chid) == dbr.CS_CONN)
-    if not conn:
-        # not connected yet, either indicating a slow network
-        # or a truly un-connnectable channel.
-        start_time = time.time()
-        ctx = current_context()
-        pvname = name(chid)
-        global _cache
-        if ctx not in _cache:
-            _cache[ctx] = {}
-
-        if timeout is None:
-            timeout = DEFAULT_CONNECTION_TIMEOUT
-
-        while (not conn and ((time.time() - start_time) < timeout)):
-            poll()
-            conn = (state(chid) == dbr.CS_CONN)
-        if not conn:
-            _cache[ctx][pvname]['ts'] = time.time()
-            _cache[ctx][pvname]['failures'] += 1
-    return conn
+    return channel_id_to_int(chid)
 
 
 @withCHID
@@ -1029,13 +908,12 @@ def state(chid):
     return libca.ca_state(chid)
 
 
-def isConnected(chid):
-    """return whether channel is connected:  `dbr.CS_CONN==state(chid)`
+def is_connected(chid):
+    """return whether channel is connected by channel id
 
     This is ``True`` for a connected channel, ``False`` for an unconnected
     channel.
     """
-
     return dbr.CS_CONN == state(chid)
 
 
@@ -1102,9 +980,9 @@ def _unpack(chid, data, count=None, ftype=None, as_numpy=True):
                 out = numpy.empty(shape=(count,), dtype=dbr.NP_Map[ntype])
                 ctypes.memmove(out.ctypes.data, data, out.nbytes)
             else:
-                out = numpy.ctypeslib.as_array(memcopy(data))
+                out = numpy.ctypeslib.as_array(deepcopy(data))
         else:
-            out = memcopy(data)
+            out = deepcopy(data)
         return out
 
     def unpack(data, count, ntype, use_numpy):
@@ -1234,7 +1112,7 @@ def get(chid, ftype=None, count=None, timeout=None,
     if as_string:
         val = _as_string(val, chid, count, ftype)
     elif isinstance(val, ctypes.Array) and as_numpy:
-        val = numpy.ctypeslib.as_array(memcopy(val))
+        val = numpy.ctypeslib.as_array(deepcopy(val))
 
     return val
 
@@ -1350,7 +1228,7 @@ def put(chid, value, wait=False, timeout=30, callback=None,
     if not (wait or callable(callback)):
         ret = libca.ca_array_put(ftype, count, chid, data)
         PySEVCHK('put', ret)
-        poll()
+        # poll()
         return ret
 
     future = CAFuture()
@@ -1485,6 +1363,13 @@ def get_enum_strings(chid):
         return get_ctrlvars(chid).get('enum_strs', None)
     return None
 
+
+def channel_id_to_int(chid):
+    if isinstance(chid, dbr.chid_t):
+        chid = chid.value
+
+    return int(chid)
+
 ##
 # Default mask for subscriptions (means update on value changes
 # exceeding MDEL, and on alarm level changes.) Other option is
@@ -1537,12 +1422,12 @@ def create_subscription(chid, use_time=False, use_ctrl=False,
 
     uarg = ctypes.py_object(callback)
     evid = ctypes.c_void_p()
-    poll()
+    # poll()
     ret = libca.ca_create_subscription(ftype, 0, chid, mask,
                                        _CB_EVENT, uarg, ctypes.byref(evid))
     PySEVCHK('create_subscription', ret)
 
-    poll()
+    # poll()
     return (_CB_EVENT, uarg, evid)
 
 
@@ -1564,4 +1449,4 @@ class CAThread(Thread):
             create_context()
         else:
             use_initial_context()
-        Thread.run(self)
+        super().run()

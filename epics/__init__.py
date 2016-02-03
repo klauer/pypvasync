@@ -40,7 +40,7 @@ from .pv import (get_pv, PV)
 from .alarm import (Alarm, )
 from .motor import Motor
 from .device import Device
-from .ca import poll
+# from .ca import poll
 from .multiproc import (CAProcess, CAPool)
 
 # some constants
@@ -92,7 +92,7 @@ def caget(pvname, *, as_string=False, count=None, as_numpy=True,
     val = yield from thispv.get(count=count, timeout=timeout,
                                 use_monitor=use_monitor,
                                 as_string=as_string, as_numpy=as_numpy)
-    poll()
+    # poll()
     return val
 
 
@@ -163,7 +163,7 @@ def caget_many(pvlist):
     """
     chids, out = [], []
     for name in pvlist:
-        chids.append(ca.create_channel(name, auto_cb=False, connect=False))
+        chids.append(ca.create_channel(name, auto_cb=False))
     for chid in chids:
         ca.connect_channel(chid)
     for chid in chids:

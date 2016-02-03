@@ -10,6 +10,9 @@ print(epics.__file__)
 
 logger = logging.getLogger(__name__)
 
+logging.getLogger('epics').setLevel(logging.DEBUG)
+logging.basicConfig()
+
 pvname = 'XF:31IDA-OP{Tbl-Ax:X1}Mtr.RBV'
 write_pvname = 'XF:31IDA-OP{Tbl-Ax:X1}Mtr.VAL'
 
@@ -60,6 +63,9 @@ def test_caget():
 
     assert threading.get_ident() == thread_id[0], 'Callback not in same thread'
     yield from asyncio.sleep(0.1)
+
+    write_pv.disconnect()
+    yield from asyncio.sleep(0.5)
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(test_caget())

@@ -5,7 +5,7 @@
 """
 basic device object defined
 """
-from .ca import poll
+# from .ca import poll
 from .pv  import get_pv
 import time
 class Device(object):
@@ -306,7 +306,7 @@ class Device(object):
     def __dir__(self):
         # there's no cleaner method to do this until Python 3.3
         all_attrs = set(self._aliases.keys() + self._pvs.keys() +
-                        list(self._nonpvs) + 
+                        list(self._nonpvs) +
                         self.__dict__.keys() + dir(Device))
         return list(sorted(all_attrs))
 
