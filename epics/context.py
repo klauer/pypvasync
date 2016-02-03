@@ -25,12 +25,9 @@ class CAContextHandler:
         self._ctx = ctx
         self._loop = asyncio.get_event_loop()
         self._tasks = None
-        self._connect_queue = queue.Queue()
-        self._monitor_queue = queue.Queue()
-        self._queues = dict(connection=self._connect_queue,
-                            monitor=self._monitor_queue)
+        self._event_queue = queue.Queue()
 
-        sigs = list(self._queues.keys())
+        sigs = ['connection', 'monitor']
         self._cbreg = CallbackRegistry(allowed_sigs=sigs,
                                        ignore_exceptions=True)
         self.channel_to_pv = {}
@@ -39,7 +36,7 @@ class CAContextHandler:
         self.evid = {}
 
     def add_event(self, type_, info):
-        self._queues[type_].put(info, block=False)
+        self._event_queue.put((type_, info), block=False)
 
     def create_channel(self, pvname):
         try:
@@ -103,7 +100,6 @@ class CAContextHandler:
             self._cbreg.unsubscribe(cid)
 
     def _queue_loop(self, q):
-        loop = self._loop
         ca.attach_context(self._ctx)
         while self._running:
             try:
@@ -133,33 +129,25 @@ class CAContextHandler:
                        oneshot=True)
         yield from fut
 
-    def _connect_queue_loop(self):
+    def _event_queue_loop(self):
         loop = self._loop
-        for info in self._queue_loop(self._connect_queue):
+        for event_type, info in self._queue_loop(self._event_queue):
             with self._sub_lock:
                 chid = info.pop('chid')
                 pvname = ca.name(chid)
                 self.channel_to_pv[chid] = pvname
                 loop.call_soon_threadsafe(partial(self._process_cb,
-                                                  'connection', chid, **info))
+                                                  event_type, chid, **info))
+
+                # TODO need to further differentiate monitor callbacks based on
+                # use_time, use_ctrl, etc.
+                # may be possible to send more info than requested, but never
+                # less
 
     def _process_cb(self, sig, chid, **info):
         with self._sub_lock:
             print('*** cb processing', sig, chid, info)
             self._cbreg.process(sig, chid, **info)
-
-    def _monitor_queue_loop(self):
-        loop = self._loop
-        for info in self._queue_loop(self._monitor_queue):
-            with self._sub_lock:
-                print('*** monitor queue info', info)
-                chid = ca.channel_id_to_int(info.pop('chid'))
-                pvname = self.channel_to_pv[chid]
-                # TODO need to further differentiate monitor callbacks based on
-                # use_time, use_ctrl, etc.
-                # may be possible to send more info than requested, but never less
-                loop.call_soon_threadsafe(partial(self._process_cb, 'monitor',
-                                                  chid, pvname=pvname, **info))
 
     def _poll_thread(self):
         '''Poll context ctx in an executor thread'''
@@ -177,8 +165,7 @@ class CAContextHandler:
     def start(self):
         loop = self._loop
         self._tasks = [loop.run_in_executor(None, self._poll_thread),
-                       loop.run_in_executor(None, self._connect_queue_loop),
-                       loop.run_in_executor(None, self._monitor_queue_loop),
+                       loop.run_in_executor(None, self._event_queue_loop),
                        ]
 
     def stop(self):
