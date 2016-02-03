@@ -101,7 +101,7 @@ class ChannelType(IntEnum):
     CTRL_DOUBLE = 34
 
 
-class SubscriptionEnum(IntEnum):
+class SubscriptionType(IntEnum):
     # create_subscription mask constants
     DBE_VALUE = 1
     DBE_LOG = 2
@@ -112,6 +112,10 @@ ChType = ChannelType
 
 
 enum_types = (ChType.ENUM, ChType.STS_ENUM, ChType.TIME_ENUM, ChType.CTRL_ENUM)
+
+native_types = (ChType.STRING, ChType.INT, ChType.SHORT, ChType.FLOAT,
+                ChType.ENUM, ChType.CHAR, ChType.LONG, ChType.DOUBLE)
+
 status_types = (ChType.STS_STRING, ChType.STS_SHORT, ChType.STS_INT,
                 ChType.STS_FLOAT, ChType.STS_ENUM, ChType.STS_CHAR,
                 ChType.STS_LONG, ChType.STS_DOUBLE)
@@ -123,6 +127,7 @@ time_types = (ChType.TIME_STRING, ChType.TIME_INT, ChType.TIME_SHORT,
 control_types = (ChType.CTRL_STRING, ChType.CTRL_INT, ChType.CTRL_SHORT,
                  ChType.CTRL_FLOAT, ChType.CTRL_ENUM, ChType.CTRL_CHAR,
                  ChType.CTRL_LONG, ChType.CTRL_DOUBLE)
+
 char_types = (ChType.CHAR, ChType.TIME_CHAR, ChType.CTRL_CHAR)
 native_float_types = (ChType.FLOAT, ChType.DOUBLE)
 
@@ -347,8 +352,7 @@ _native_map = {
     ChType.TIME_LONG: ChType.LONG,
     ChType.TIME_DOUBLE: ChType.DOUBLE,
 
-    # Note: there is no ctrl string in the C definition
-    ChType.CTRL_STRING: ChType.TIME_STRING,  # <-- correct
+    ChType.CTRL_STRING: ChType.STRING,
     ChType.CTRL_SHORT: ChType.SHORT,
     ChType.CTRL_INT: ChType.INT,
     ChType.CTRL_FLOAT: ChType.FLOAT,
