@@ -108,7 +108,8 @@ class PV(object):
         self.connection_timeout = connection_timeout
         self._args = dict(value=None,
                           pvname=self.pvname,
-                          count=-1)
+                          count=-1,
+                          precision=None)
         self.connection_callbacks = []
 
         if connection_callback is not None:
@@ -158,8 +159,8 @@ class PV(object):
 
     def __on_connect(self, pvname=None, chid=None, connected=True):
         "callback for connection events"
-        print('on connect')
-        if not connected:
+        print('on connect', self, connected)
+        if connected:
             self.chid = dbr.chid_t(chid)
             try:
                 count = ca.element_count(self.chid)
@@ -192,10 +193,13 @@ class PV(object):
                     mask = self.auto_monitor
                 use_ctrl = (self.form == 'ctrl')
                 use_time = (self.form == 'time')
-                ref = ca.create_subscription(self.chid, use_ctrl=use_ctrl,
-                                             use_time=use_time,
-                                             callback=self.__on_changes,
-                                             mask=mask)
+
+                ctx = self._context
+                ref = ctx.subscribe_monitor(func=self.__on_changes,
+                                            chid=self.chid,
+                                            use_ctrl=use_ctrl,
+                                            use_time=use_time,
+                                            mask=mask)
                 self._monref = ref
 
         for conn_cb in self.connection_callbacks:
@@ -464,7 +468,7 @@ class PV(object):
             self.callbacks[index] = (callback, kw)
 
         if with_ctrlvars and self.connected:
-            self.get_ctrlvars()
+            self.get_ctrlvars()  # <-- TODO coroutine
         if run_now:
             self.get(as_string=True)
             if self.connected:
@@ -483,7 +487,7 @@ class PV(object):
     def _getinfo(self):
         "get information paragraph"
         yield from self.wait_for_connection()
-        self.get_ctrlvars()
+        self.get_ctrlvars()  # <-- TODO coroutine
         out = []
         mod = 'native'
         xtype = self._args['typefull']
@@ -555,7 +559,7 @@ class PV(object):
             if arg in ('status', 'severity', 'timestamp'):
                 self.get_timevars(timeout=1, warn=False)
             else:
-                self.get_ctrlvars(timeout=1, warn=False)
+                self.get_ctrlvars(timeout=1, warn=False)  # <-- TODO coroutine
         return self._args.get(arg, None)
 
     def __getval__(self):

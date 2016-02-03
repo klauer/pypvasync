@@ -16,9 +16,14 @@ logging.basicConfig()
 pvname = 'XF:31IDA-OP{Tbl-Ax:X1}Mtr.RBV'
 write_pvname = 'XF:31IDA-OP{Tbl-Ax:X1}Mtr.VAL'
 
+def monitor(value=None, pvname=None, **kwd):
+    print('!!! monitor {}={}'.format(pvname, value))
+
 
 @asyncio.coroutine
 def test_caget():
+    mon_pv = epics.PV(pvname, auto_monitor=True, callback=monitor)
+
     value = yield from epics.caget(pvname)
     print('value', value)
 

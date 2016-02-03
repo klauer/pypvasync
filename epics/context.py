@@ -4,6 +4,8 @@ import logging
 import atexit
 import queue
 import threading
+import ctypes
+
 from functools import partial
 
 from . import ca
@@ -33,6 +35,8 @@ class CAContextHandler:
                                        ignore_exceptions=True)
         self.channel_to_pv = {}
         self.pv_to_channel = {}
+        self.ch_monitors = {}
+        self.evid = {}
 
     def add_event(self, type_, info):
         self._queues[type_].put(info, block=False)
@@ -47,7 +51,7 @@ class CAContextHandler:
         chid = dbr.chid_t()
         ret = ca.libca.ca_create_channel(pvname,
                                          _on_connection_event.ca_callback,
-                                         0, 0, ca.ctypes.byref(chid))
+                                         0, 0, ctypes.byref(chid))
         ca.PySEVCHK('create_channel', ret)
         return ca.channel_id_to_int(chid)
 
@@ -72,23 +76,27 @@ class CAContextHandler:
             return self.subscribe(sig='connection', chid=chid, func=func,
                                   oneshot=oneshot)
 
-    def subscribe_monitor(self, func, chid, *, oneshot=False):
-        pass
+    def subscribe_monitor(self, func, chid, *, use_ctrl=False, use_time=True,
+                          mask=None):
+        with self._sub_lock:
+            mask |= self.default_mask
+            ftype = ca.promote_type(chid, use_ctrl=use_ctrl, use_time=use_time)
 
-    def ca_subscribe(self, func, chid, *, use_ctrl=False, use_time=True,
-                     mask=None):
-        mask |= self.default_mask
-        ftype = promote_type(chid, use_ctrl=use_ctrl, use_time=use_time)
+            mon_key = (mask, ftype)
+            if mon_key in self.ch_monitors:
+                evid = self.ch_monitors[mon_key]
+            else:
+                evid = ctypes.c_void_p()
+                ca_callback = _on_monitor_event.ca_callback
+                ret = ca.libca.ca_create_subscription(ftype, 0, chid, mask,
+                                                      ca_callback, None,
+                                                      ctypes.byref(evid))
+                ca.PySEVCHK('create_subscription', ret)
 
-        uarg = ctypes.py_object(callback)
-        evid = ctypes.c_void_p()
-        # poll()
-        ret = libca.ca_create_subscription(ftype, 0, chid, mask,
-                                           _CB_EVENT, uarg, ctypes.byref(evid))
-        PySEVCHK('create_subscription', ret)
+                self.ch_monitors[mon_key] = evid
 
-        # poll()
-        return (_CB_EVENT, uarg, evid)
+        return self.subscribe(sig='monitor', chid=chid, func=func,
+                              oneshot=False)
 
     def unsubscribe(self, cid):
         with self._sub_lock:
@@ -142,10 +150,16 @@ class CAContextHandler:
 
     def _monitor_queue_loop(self):
         loop = self._loop
-        for item in self._queue_loop(self._monitor_queue):
+        for info in self._queue_loop(self._monitor_queue):
             with self._sub_lock:
-                print('*** monitor queue item', item)
-                # loop.call_soon_threadsafe(future.set_exception, ex)
+                print('*** monitor queue info', info)
+                chid = ca.channel_id_to_int(info.pop('chid'))
+                pvname = self.channel_to_pv[chid]
+                # TODO need to further differentiate monitor callbacks based on
+                # use_time, use_ctrl, etc.
+                # may be possible to send more info than requested, but never less
+                loop.call_soon_threadsafe(partial(self._process_cb, 'monitor',
+                                                  chid, pvname=pvname, **info))
 
     def _poll_thread(self):
         '''Poll context ctx in an executor thread'''
@@ -164,6 +178,7 @@ class CAContextHandler:
         loop = self._loop
         self._tasks = [loop.run_in_executor(None, self._poll_thread),
                        loop.run_in_executor(None, self._connect_queue_loop),
+                       loop.run_in_executor(None, self._monitor_queue_loop),
                        ]
 
     def stop(self):
@@ -205,7 +220,6 @@ class CAContexts:
         return self.add_context(ctx)
 
     def stop(self):
-        print('stopping')
         for ctx_id, context in list(self.contexts.items()):
             context.stop()
             del self.contexts[ctx_id]
@@ -233,8 +247,15 @@ _cm = CAContexts()
 
 @ca.ca_connection_callback
 def _on_connection_event(args):
+    global _cm
     info = dict(chid=int(args.chid),
                 connected=(args.op == dbr.OP_CONN_UP)
                 )
-
     _cm.add_event(ca.current_context(), 'connection', info)
+
+
+@ca.ca_callback_event
+def _on_monitor_event(args):
+    global _cm
+    info = ca.cast_monitor_args(args)
+    _cm.add_event(ca.current_context(), 'monitor', info)

@@ -487,16 +487,11 @@ def withSEVCHK(fcn):
 # Event Handler for monitor event callbacks
 
 
-@ca_callback_event
-def _onMonitorEvent(args):
+def cast_monitor_args(args):
     """Event Handler for monitor events: not intended for use"""
 
-    # for 64-bit python on Windows!
     value = dbr.cast_args(args)
-
-    pvname = name(args.chid)
-    kwds = {'ftype': args.type, 'count': args.count,
-            'chid': args.chid, 'pvname': pvname,
+    kwds = {'ftype': args.type, 'count': args.count, 'chid': args.chid,
             'status': args.status}
 
     # add kwds arguments for CTRL and TIME variants
@@ -527,8 +522,8 @@ def _onMonitorEvent(args):
             pass
 
     value = _unpack(args.chid, value, count=args.count, ftype=args.type)
-    if callable(args.usr):
-        args.usr(value=value, **kwds)
+    kwds['value'] = value
+    return kwds
 
 
 @ca_callback_event
@@ -1260,8 +1255,8 @@ DEFAULT_SUBSCRIPTION_MASK = dbr.DBE_VALUE | dbr.DBE_ALARM
 
 
 @withConnectedCHID
-def create_subscription(chid, use_time=False, use_ctrl=False,
-                        mask=None, callback=None):
+def _create_subscription(chid, use_time=False, use_ctrl=False,
+                         mask=None, callback=None):
     """create a *subscription to changes*. Sets up a user-supplied
     callback function to be called on any changes to the channel.
 
