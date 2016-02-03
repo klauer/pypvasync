@@ -25,13 +25,13 @@ def test_caget():
         print('caget failed, as expected', pvname, ex.__class__.__name__, ex)
 
     print('move to 1.2')
-    yield from epics.caput(write_pvname, 1.2)
+    yield from epics.caput(write_pvname, 1.2, timeout=2.0)
     yield from asyncio.sleep(0.1)
     value = yield from epics.caget(pvname)
     print('read back', value)
 
     print('move to 1.0')
-    yield from epics.caput(write_pvname, 1.0)
+    yield from epics.caput(write_pvname, 1.0, timeout=2.0)
     yield from asyncio.sleep(0.1)
     value = yield from epics.caget(pvname)
     print('read back', value)

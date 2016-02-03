@@ -53,7 +53,7 @@ INVALID_ALARM = 3
 _PVmonitors_ = {}
 
 
-def caput(pvname, value, wait=False, timeout=60):
+def caput(pvname, value, wait=True, timeout=60):
     """caput(pvname, value, wait=False, timeout=60)
     simple put to a pv's value.
        >>> caput('xx.VAL',3.0)

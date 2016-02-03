@@ -24,6 +24,8 @@ from math import log10
 import atexit
 import warnings
 from threading import Thread
+from functools import partial
+
 
 from .utils import (STR2BYTES, BYTES2STR, NULLCHAR, NULLCHAR_2,
                     strjoin, memcopy, is_string, is_string_or_bytes,
@@ -37,6 +39,9 @@ warnings.filterwarnings('ignore',
 import numpy
 from . import dbr
 from .dbr import native_type
+
+
+_pending_futures = set()
 
 
 def _make_callback(func, args):
@@ -507,7 +512,7 @@ def _onMonitorEvent(args):
             pass
 
     value = _unpack(args.chid, value, count=args.count, ftype=args.type)
-    if hasattr(args.usr, '__call__'):
+    if callable(args.usr):
         args.usr(value=value, **kwds)
 
 # connection event handler:
@@ -557,7 +562,7 @@ def _onConnectionEvent(args):
                               'ts': time.time(), 'failures': 0})
                 for callback in entry.get('callbacks', []):
                     poll()
-                    if hasattr(callback, '__call__'):
+                    if callable(callback):
                         # print( ' ==> connection callback ', callback, conn)
                         callback(pvname=pvname, chid=chid, conn=conn)
     #print('Connection done')
@@ -572,12 +577,13 @@ def _onGetEvent(args):
     """get_callback event: simply store data contents which will need
     conversion to python data with _unpack()."""
     future = args.usr
+    _pending_futures.remove(future)
     # print("GET EVENT: chid, user ", args.chid, future, hash(future))
     # print("           type, count ", args.type, args.count)
-    # print("           status ",  args.status, dbr.ECA_NORMAL)
+    # print("           status ", args.status, dbr.ECA_NORMAL)
 
     if future.done():
-        print('hmm, future already done', future)
+        print('getevent: hmm, future already done', future, id(future))
         return
 
     if future.cancelled():
@@ -596,7 +602,13 @@ def _onGetEvent(args):
 def _onPutEvent(args, **kwds):
     """set put-has-completed for this channel"""
     future = args.usr
-    if not future.cancelled():
+    print('putevent', future)
+    _pending_futures.remove(future)
+
+    if future.done():
+        print('putevent: hmm, future already done', future, id(future))
+    elif not future.cancelled():
+        print('finishing put event')
         future.set_result(True)
 
 
@@ -752,7 +764,7 @@ def pend_event(timeout=1.e-5):
     """polls CA for events """
     ret = libca.ca_pend_event(timeout)
     try:
-        return PySEVCHK('pend_event', ret,  dbr.ECA_TIMEOUT)
+        return PySEVCHK('pend_event', ret, dbr.ECA_TIMEOUT)
     except CASeverityException:
         return ret
 
@@ -835,8 +847,8 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
     if ctx not in _cache:
         _cache[ctx] = {}
     if pvname not in _cache[ctx]:  # new PV for this context
-        entry = {'conn': False,  'chid': None,
-                 'ts': 0,  'failures': 0, 'value': None,
+        entry = {'conn': False, 'chid': None,
+                 'ts': 0, 'failures': 0, 'value': None,
                  'callbacks': [callback]}
         # logging.debug("Create Channel %s " % pvname)
         _cache[ctx][pvname] = entry
@@ -844,8 +856,7 @@ def create_channel(pvname, connect=False, auto_cb=True, callback=None):
         entry = _cache[ctx][pvname]
         if not entry['conn'] and callback is not None:  # pending connection
             _cache[ctx][pvname]['callbacks'].append(callback)
-        elif (hasattr(callback, '__call__') and
-              not callback in entry['callbacks']):
+        elif (callable(callback) and callback not in entry['callbacks']):
             entry['callbacks'].append(callback)
             callback(chid=entry['chid'], pvname=pvname, conn=entry['conn'])
 
@@ -1183,6 +1194,9 @@ def get(chid, ftype=None, count=None, timeout=None,
         count = min(count, element_count(chid))
 
     future = asyncio.Future()
+    _pending_futures.add(future)
+
+    print('get future', id(future))
     ret = libca.ca_array_get_callback(ftype, count, chid,
                                       _onGetEvent.ca_callback,
                                       ctypes.py_object(future))
@@ -1214,7 +1228,7 @@ def _as_string(val, chid, count, ftype):
     try:
         if (ftype in (dbr.CHAR, dbr.TIME_CHAR, dbr.CTRL_CHAR) and
                 count < AUTOMONITOR_MAXLENGTH):
-            val = strjoin('',   [chr(i) for i in val if i > 0]).strip()
+            val = strjoin('', [chr(i) for i in val if i > 0]).strip()
         elif ftype == dbr.ENUM and count == 1:
             val = get_enum_strings(chid)[val]
         elif count > 1:
@@ -1242,7 +1256,8 @@ def put(chid, value, wait=False, timeout=30, callback=None,
         whether to wait for processing to complete (or time-out)
         before returning.
     timeout : float
-        maximum time to wait for processing to complete before returning anyway.
+        maximum time to wait for processing to complete before returning
+        anyway.
     callback : ``None`` of callable
         user-supplied function to run when processing has completed.
     callback_data :  object
@@ -1325,17 +1340,36 @@ def put(chid, value, wait=False, timeout=30, callback=None,
             raise ChannelAccessException(errmsg % (repr(value)))
 
     # simple put, without wait or callback
-    if not (wait or hasattr(callback, '__call__')):
+    if not (wait or callable(callback)):
         ret = libca.ca_array_put(ftype, count, chid, data)
         PySEVCHK('put', ret)
         poll()
         return ret
 
     future = asyncio.Future()
+    _pending_futures.add(future)
+
+    # i think this would run in the epics thread, not a good thing
+    # if callable(callback):
+    #     print('callback is', callback)
+    #     future.add_done_callback(partial(callback, pvname=name(chid),
+    #                                      data=callback_data))
+
     ret = libca.ca_array_put_callback(ftype, count, chid,
                                       data, _onPutEvent.ca_callback,
                                       ctypes.py_object(future))
+
     PySEVCHK('put', ret)
+
+    try:
+        ret = yield from asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        future.cancel()
+        raise
+
+    if callable(callback):
+        callback(pvname=name(chid), data=callback_data)
+
     return ret
 
 
