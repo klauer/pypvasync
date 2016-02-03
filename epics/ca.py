@@ -34,15 +34,30 @@ warnings.filterwarnings('ignore',
                         'Item size computed from the PEP 3118*',
                         RuntimeWarning)
 
-HAS_NUMPY = False
-try:
-    import numpy
-    HAS_NUMPY = True
-except ImportError:
-    pass
-
+import numpy
 from . import dbr
 from .dbr import native_type
+
+
+def _make_callback(func, args):
+    """ make callback function"""
+    if PY64_WINDOWS:
+        # note that ctypes.POINTER is needed for 64-bit Python on Windows
+        args = ctypes.POINTER(args)
+
+        @wraps(func)
+        def wrapped(args):
+            # for 64-bit python on Windows!
+            return func(args.contents)
+        return ctypes.CFUNCTYPE(None, args)(wrapped)
+    else:
+        return ctypes.CFUNCTYPE(None, args)(func)
+
+
+def ca_callback_event(fcn):
+    fcn.ca_callback = _make_callback(fcn, dbr.event_handler_args)
+    return fcn
+
 
 # holder for shared library
 libca = None
@@ -75,8 +90,6 @@ _cache = {}
 _namecache = {}
 
 # logging.basicConfig(filename='ca.log',level=logging.DEBUG)
-# Cache of pvs waiting for put to be done.
-_put_done = {}
 
 # get a unique python value that cannot be a value held by an
 # actual PV to signal "Get is incomplete, awaiting callback"
@@ -320,7 +333,6 @@ def clear_cache():
     # Clear global state variables
     global _cache
     _cache.clear()
-    _put_done.clear()
 
     # The old context is copied directly from the old process
     # in systems with proper fork() implementations
@@ -455,6 +467,7 @@ def withSEVCHK(fcn):
 # Event Handler for monitor event callbacks
 
 
+@ca_callback_event
 def _onMonitorEvent(args):
     """Event Handler for monitor events: not intended for use"""
 
@@ -552,72 +565,46 @@ def _onConnectionEvent(args):
     return
 
 
-def _make_callback(func, args):
-    """ make callback function"""
-    if PY64_WINDOWS:
-        # note that ctypes.POINTER is needed for 64-bit Python on Windows
-        args = ctypes.POINTER(args)
-
-        @wraps(func)
-        def wrapped(args):
-            # for 64-bit python on Windows!
-            return func(args.contents)
-        return ctypes.CFUNCTYPE(None, args)(wrapped)
-    else:
-        return ctypes.CFUNCTYPE(None, args)(func)
-
-
-def ca_callback_event(fcn):
-    fcn.ca_callback = _make_callback(fcn, dbr.event_handler_args)
-    return fcn
 
 
 @ca_callback_event
 def _onGetEvent(args):
     """get_callback event: simply store data contents which will need
     conversion to python data with _unpack()."""
-    print('get event')
-    print("GET EVENT: chid, user ", args.chid, args.usr)
-    print("GET EVENT: type, count ", args.type, args.count)
-    print("GET EVENT: status ",  args.status, dbr.ECA_NORMAL)
-
     future = args.usr
-    if future.cancelled():
-        print('future was cancelled')
+    # print("GET EVENT: chid, user ", args.chid, future, hash(future))
+    # print("           type, count ", args.type, args.count)
+    # print("           status ",  args.status, dbr.ECA_NORMAL)
+
+    if future.done():
+        print('hmm, future already done', future)
         return
 
-    # TODO futures not threadsafe? call_soon_threadsafe?
+    if future.cancelled():
+        print('future was cancelled', future)
+        return
+
+    # TODO futures not threadsafe? pass in a threading.Lock() too?
     if args.status != dbr.ECA_NORMAL:
         # TODO look up in appdev manual
         future.set_exception(CASeverityException('get', str(args.status)))
-        return
-
-    future.set_result(memcopy(dbr.cast_args(args)))
+    else:
+        future.set_result(memcopy(dbr.cast_args(args)))
 
 
 @ca_callback_event
 def _onPutEvent(args, **kwds):
-    """set put-has-completed for this channel,
-    call optional user-supplied callback"""
-    # for 64-bit python on Windows!
+    """set put-has-completed for this channel"""
+    future = args.usr
+    if not future.cancelled():
+        future.set_result(True)
 
-    pvname = name(args.chid)
-    fcn = _put_done[pvname][1]
-    data = _put_done[pvname][2]
-    _put_done[pvname] = (True, None, None)
-    if hasattr(fcn, '__call__'):
-        if isinstance(data, dict):
-            kwds.update(data)
-        elif data is not None:
-            kwds['data'] = data
-        fcn(pvname=pvname, **kwds)
 
 # create global reference to these callbacks
 
 
 _CB_CONNECT = _make_callback(_onConnectionEvent, dbr.connection_args)
-_CB_PUTWAIT = _make_callback(_onPutEvent,        dbr.event_handler_args)
-_CB_EVENT = _make_callback(_onMonitorEvent,    dbr.event_handler_args)
+_CB_EVENT = _make_callback(_onMonitorEvent, dbr.event_handler_args)
 
 # Now we're ready to wrap libca functions
 #
@@ -1118,7 +1105,7 @@ def _unpack(chid, data, count=None, ftype=None, as_numpy=True):
     if ftype is None:
         ftype = dbr.INT
     ntype = native_type(ftype)
-    use_numpy = (HAS_NUMPY and as_numpy and ntype != dbr.STRING and count > 1)
+    use_numpy = (as_numpy and ntype != dbr.STRING and count > 1)
     return unpack(data, count, ntype, use_numpy)
 
 
@@ -1210,13 +1197,13 @@ def get(chid, ftype=None, count=None, timeout=None,
         future.cancel()
         raise
 
-    print("Get Complete> Unpack ", value, count, ftype)
+    # print("Get Complete> Unpack ", value, count, ftype)
     val = _unpack(chid, value, count=count, ftype=ftype, as_numpy=as_numpy)
-    print("Get Complete unpacked to ", val)
+    # print("Get Complete unpacked to ", val)
 
     if as_string:
         val = _as_string(val, chid, count, ftype)
-    elif isinstance(val, ctypes.Array) and HAS_NUMPY and as_numpy:
+    elif isinstance(val, ctypes.Array) and as_numpy:
         val = numpy.ctypeslib.as_array(memcopy(val))
 
     return val
@@ -1239,6 +1226,7 @@ def _as_string(val, chid, count, ftype):
 
 
 @withConnectedCHID
+@asyncio.coroutine
 def put(chid, value, wait=False, timeout=30, callback=None,
         callback_data=None):
     """sets the Channel to a value, with options to either wait
@@ -1342,21 +1330,12 @@ def put(chid, value, wait=False, timeout=30, callback=None,
         PySEVCHK('put', ret)
         poll()
         return ret
-    # wait with callback (or put_complete)
-    pvname = name(chid)
-    _put_done[pvname] = (False, callback, callback_data)
-    start_time = time.time()
 
+    future = asyncio.Future()
     ret = libca.ca_array_put_callback(ftype, count, chid,
-                                      data, _CB_PUTWAIT, 0)
+                                      data, _onPutEvent.ca_callback,
+                                      ctypes.py_object(future))
     PySEVCHK('put', ret)
-    poll(evt=1.e-4, iot=0.05)
-    if wait:
-        while not (_put_done[pvname][0] or
-                   (time.time() - start_time) > timeout):
-            poll()
-        if not _put_done[pvname][0]:
-            ret = -ret
     return ret
 
 
