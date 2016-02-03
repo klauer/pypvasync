@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 
 # 'connection', chid
 # 'monitor', chid, mask, ftype
-
+# a monitor can be reused if:
+#   amask = available_mask / atype = available_type
+#   rmask = requested_mask / rtype = requested_type
+#   (amask & rmask) == rmask
+#   (rtype <= atype)
 
 class ChannelCallbackRegistry:
     def __init__(self, ignore_exceptions=False, allowed_sigs=None):

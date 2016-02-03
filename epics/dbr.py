@@ -36,7 +36,7 @@ else:
 MAX_STRING_SIZE = 40
 MAX_UNITS_SIZE = 8
 MAX_ENUM_STRING_SIZE = 26
-MAX_ENUMS = 16
+MAX_ENUM_STATES = 16
 
 # EPICS2UNIX_EPOCH = 631173600.0 - time.timezone
 EPICS2UNIX_EPOCH = 631152000.0
@@ -217,7 +217,7 @@ def _ctrl_lims(t):
 class ctrl_enum(_stat_sev):
     "dbr ctrl enum"
     _fields_ = [('no_str', short_t),
-                ('strs', (char_t * MAX_ENUM_STRING_SIZE) * MAX_ENUMS),
+                ('strs', (char_t * MAX_ENUM_STRING_SIZE) * MAX_ENUM_STATES),
                 ('value', ushort_t)
                 ]
 
