@@ -19,6 +19,7 @@ from . import config
 from .context import get_current_context
 from . import coroutines
 from .dbr import ChannelType
+from .utils import format_time
 
 _PVcache_ = {}
 
@@ -51,16 +52,6 @@ def get_pv(pvname, form='time', connect=False, context=None, timeout=5.0,
         yield from thispv.wait_for_connection(timeout=timeout)
 
     return thispv
-
-
-def fmt_time(tstamp=None):
-    "simple formatter for time values"
-    if tstamp is None:
-        tstamp = time.time()
-    tstamp, frac = divmod(tstamp, 1)
-    return "%s.%5.5i" % (time.strftime("%Y-%m-%d %H:%M:%S",
-                                       time.localtime(tstamp)),
-                         round(1.e5 * frac))
 
 
 class PV(object):
@@ -514,7 +505,7 @@ class PV(object):
                 continue
 
             if nam == 'timestamp':
-                att = "%.3f (%s)" % (att, fmt_time(att))
+                att = "%.3f (%s)" % (att, format_time(att))
             elif nam == 'char_value':
                 att = "'%s'" % att
             if len(nam) < 12:

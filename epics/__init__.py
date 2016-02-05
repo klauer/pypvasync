@@ -25,6 +25,10 @@ __doc__ = """
 
 import time
 import sys
+
+if sys.version_info[0] < 3:
+    raise ImportError("Python version 3 required")
+
 from . import ca
 from . import dbr
 from . import context
@@ -40,3 +44,4 @@ from .alarm import (NO_ALARM, MINOR_ALARM, MAJOR_ALARM, INVALID_ALARM)
 from .coroutines import (caget, caput, get_ctrlvars, get_timevars,
                          get_timestamp, get_severity, get_precision,
                          get_enum_strings, cainfo, caget_many)
+
