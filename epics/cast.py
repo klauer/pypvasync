@@ -1,9 +1,6 @@
 import ctypes
 import ctypes.util
 
-from .utils import (BYTES2STR, NULLCHAR, is_string,
-                    is_string_or_bytes, ascii_string)
-
 import numpy
 from . import dbr
 from .dbr import native_type
@@ -12,7 +9,7 @@ from .errors import ChannelAccessException
 from .dbr import ChannelType
 
 
-def decode_string(bytes_, encoding='latin-1'):
+def decode_bytes(bytes_, encoding='latin-1'):
     try:
         bytes_ = bytes_[:bytes_.index(0)]
     except ValueError:
@@ -27,9 +24,9 @@ def scan_string(data, count):
     count = min(count, len(data))
 
     if count == 1:
-        return decode_string(data[0].value)
+        return decode_bytes(data[0].value)
 
-    return [decode_string(data[elem].value)
+    return [decode_bytes(data[elem].value)
             for elem in range(count)]
 
 
@@ -93,71 +90,68 @@ def unpack(chid, data, count=None, ftype=None, as_numpy=True):
     return unpack_simple(data, count, ntype, use_numpy)
 
 
-@withConnectedCHID
-def get_put_info(chid, value):
-    ftype = field_type(chid)
-    count = nativecount = element_count(chid)
-    if count > 1:
-        # check that data for array PVS is a list, array, or string
-        try:
-            count = min(len(value), count)
-            if count == 0:
-                count = nativecount
-        except TypeError:
-            print('''PyEpics Warning:
-     value put() to array PV must be an array or sequence''')
-    if (ftype == ChannelType.CHAR and nativecount > 1 and
-            is_string_or_bytes(value)):
-        count += 1
+def get_string_put_info(count, value, encoding='latin-1'):
+    data = (count * dbr.string_t)()
 
-    # if needed (python3, especially) convert to basic string/bytes form
-    if is_string(value):
-        if value == '':
-            value = NULLCHAR
-        value = ascii_string(value)
+    if count == 1:
+        value = [value]
+
+    for elem in range(count):
+        bytes_ = value[elem].encode(encoding) + b'\0'
+
+        if len(bytes_) > dbr.MAX_STRING_SIZE:
+            raise ValueError('Value will not fit into an EPICS string '
+                             ' (40 chars) with a null-terminator byte')
+
+        data[elem].value = bytes_
+
+    return ChannelType.STRING, count, data
+
+
+@withConnectedCHID
+def get_put_info(chid, value, encoding='latin-1'):
+    ftype = field_type(chid)
+    nativecount = element_count(chid)
+    count = nativecount
+    try:
+        count = len(value)
+    except TypeError:
+        if nativecount > 1:
+            raise ValueError('value put to array PV must be an array or '
+                             'sequence')
+        count = 1
+
+    if ftype == ChannelType.STRING:
+        return get_string_put_info(count, value, encoding=encoding)
+
+    if isinstance(value, str):
+        # if needed, encode to byte form
+        value = value.encode(encoding)
+
+        if nativecount > 1:
+            value = value + b'\0'
+            count += 1
+
+            if count > nativecount:
+                raise ValueError('Value will not fit into the given PV '
+                                 'with a null-terminator byte')
+
+    if count > nativecount:
+        raise ValueError('PV can only hold {} values. '
+                         'Attempting to put {} items.'
+                         ''.format(nativecount, count))
 
     data = (count * dbr._ftype_to_ctype[ftype])()
-    if ftype == ChannelType.STRING:
-        if count == 1:
-            data[0].value = value
-        else:
-            for elem in range(min(count, len(value))):
-                data[elem].value = ascii_string(value[elem])
-    elif nativecount == 1:
-        if ftype == ChannelType.CHAR:
-            if is_string_or_bytes(value):
-                if isinstance(value, bytes):
-                    value = value.decode('ascii', 'replace')
-                value = [ord(i) for i in value] + [0, ]
-            else:
-                data[0] = value
-        else:
-            # allow strings (even bits/hex) to be put to integer types
-            if is_string(value) and isinstance(data[0], (int, )):
-                value = int(value, base=0)
-            try:
-                data[0] = value
-            except TypeError:
-                data[0] = type(data[0])(value)
-            except Exception:
-                errmsg = "cannot put value '%s' to PV of type '%s'"
-                tname = ChannelType(ftype).name.lower()
-                raise ChannelAccessException(errmsg % (repr(value), tname))
 
-    else:
-        if ftype == ChannelType.CHAR and is_string_or_bytes(value):
-            if isinstance(value, bytes):
-                value = value.decode('ascii', 'replace')
-            value = [ord(i) for i in value] + [0, ]
-        try:
-            ndata, nuser = len(data), len(value)
-            if nuser > ndata:
-                value = value[:ndata]
-            data[:nuser] = list(value)
+    if count == 1:
+        value = [value]
 
-        except (ValueError, IndexError):
-            errmsg = "cannot put array data to PV of type '%s'"
-            raise ChannelAccessException(errmsg % (repr(value)))
+    try:
+        data[:count] = value
+    except ValueError:
+        errmsg = ("cannot put array data to PV. Given: {} Expected: {}"
+                  "".format(type(value), data))
+        raise ChannelAccessException(errmsg)
 
     return ftype, count, data
 
@@ -180,7 +174,7 @@ def cast_monitor_args(args):
                 if hasattr(tmpv, attr):
                     kwds[attr] = getattr(tmpv, attr)
                     if attr == 'units':
-                        kwds[attr] = BYTES2STR(getattr(tmpv, attr, ''))
+                        kwds[attr] = decode_bytes(getattr(tmpv, attr, ''))
 
             if (hasattr(tmpv, 'strs') and hasattr(tmpv, 'no_str') and
                     tmpv.no_str > 0):
