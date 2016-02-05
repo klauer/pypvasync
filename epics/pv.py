@@ -420,7 +420,7 @@ class PV(object):
         kwd = copy.copy(self._args)
         kwd.update(kwargs)
         kwd['cb_info'] = (index, self)
-        if hasattr(fcn, '__call__'):
+        if callable(fcn):
             fcn(**kwd)
 
     def add_callback(self, callback=None, index=None, run_now=False,
@@ -432,7 +432,7 @@ class PV(object):
         Note that a PV may have multiple callbacks, so that each
         has a unique index (small integer) that is returned by
         add_callback.  This index is needed to remove a callback."""
-        if hasattr(callback, '__call__'):
+        if callable(callback):
             if index is None:
                 index = 1
                 if len(self.callbacks) > 0:
