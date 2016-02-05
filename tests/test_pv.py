@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # unit-tests for ca interface
 
-import os
-import sys
-import time
 import unittest
 import asyncio
 import numpy as np
@@ -12,14 +9,6 @@ from . import pvnames
 
 from epics import PV, caput, caget, ca
 from unittest import mock
-
-
-CHANGE_DAT = {}
-
-def onChanges(pvname=None, value=None, **kws):
-    print( '/// New Value: %s  value=%s, kw=%s\n' %( pvname, str(value), repr(kws)))
-    global CHANGE_DAT
-    CHANGE_DAT[pvname] = value
 
 
 class PV_Tests(unittest.TestCase):
@@ -60,7 +49,7 @@ class PV_Tests(unittest.TestCase):
         val = yield from pv.get()
         cval = yield from pv.get(as_string=True)
 
-        self.failUnless(int(cval) == val)
+        self.assertEquals(int(cval), val)
 
     @async_test
     @no_simulator_updates
@@ -69,11 +58,11 @@ class PV_Tests(unittest.TestCase):
         '''String Array: '''
         pv = PV(pvnames.string_arr_pv)
         val = yield from pv.get()
-        self.failUnless(len(val) > 10)
+        self.assertGreater(len(val), 10)
         self.assertIsInstance(val[0], str)
-        self.failUnless(len(val[0]) > 1)
+        self.assertGreater(len(val[0]), 1)
         self.assertIsInstance(val[1], str)
-        self.failUnless(len(val[1]) > 1)
+        self.assertGreater(len(val[1]), 1)
 
     @async_test
     @no_simulator_updates
@@ -109,7 +98,6 @@ class PV_Tests(unittest.TestCase):
         except asyncio.TimeoutError:
             self.skipTest('Unable to connect to real motor record')
 
-        see_complete = []
         retry_deadband = yield from caget('{}.RDBD'.format(pvnames.motor1))
 
         for v in vals:
@@ -134,157 +122,152 @@ class PV_Tests(unittest.TestCase):
         print('   saw %i changes.\n' % callback.call_count)
         mypv.clear_callbacks()
 
-   #  @async_test
-   #  def test_subarrays(self):
-   #      print("Subarray test:  dynamic length arrays\n")
-   #      driver = PV(pvnames.subarr_driver)
-   #      subarr1 = PV(pvnames.subarr1)
-   #      subarr1.connect()
+    @async_test
+    def test_subarrays(self):
+        print("Subarray test:  dynamic length arrays\n")
+        driver = PV(pvnames.subarr_driver)
+        subarr1 = PV(pvnames.subarr1)
+        yield from subarr1.wait_for_connection()
 
-   #      len_full = 64
-   #      len_sub1 = 16
-   #      full_data = np.arange(len_full)/1.0
+        len_full = 64
+        len_sub1 = 16
+        full_data = np.arange(len_full) / 1.0
 
-   #      caput("%s.NELM" % pvnames.subarr1, len_sub1)
-   #      caput("%s.INDX" % pvnames.subarr1, 0)
+        yield from caput("%s.NELM" % pvnames.subarr1, len_sub1)
+        yield from caput("%s.INDX" % pvnames.subarr1, 0)
 
+        yield from driver.put(full_data)
+        yield from asyncio.sleep(0.1)
+        subval = yield from subarr1.get()
 
-   #      driver.put(full_data) ;
-   #      time.sleep(0.1)
-   #      subval = subarr1.get()
+        self.assertEqual(len(subval), len_sub1)
+        np.testing.assert_array_equal(subval, full_data[:len_sub1])
+        print("Subarray test:  C\n")
+        yield from caput("%s.NELM" % pvnames.subarr2, 19)
+        yield from caput("%s.INDX" % pvnames.subarr2, 3)
 
-   #      self.assertEqual(len(subval), len_sub1)
-   #      self.failUnless(np.all(subval == full_data[:len_sub1]))
-   #      print("Subarray test:  C\n")
-   #      caput("%s.NELM" % pvnames.subarr2, 19)
-   #      caput("%s.INDX" % pvnames.subarr2, 3)
+        subarr2 = PV(pvnames.subarr2)
+        yield from subarr2.get()
 
-   #      subarr2 = PV(pvnames.subarr2)
-   #      subarr2.get()
+        yield from driver.put(full_data)
+        yield from asyncio.sleep(0.1)
+        subval = yield from subarr2.get()
 
-   #      driver.put(full_data) ;   time.sleep(0.1)
-   #      subval = subarr2.get()
+        self.assertEqual(len(subval), 19)
+        np.testing.assert_array_equal(subval, full_data[3:3 + 19])
 
-   #      self.assertEqual(len(subval), 19)
-   #      self.failUnless(np.all(subval == full_data[3:3+19]))
+        yield from caput("%s.NELM" % pvnames.subarr2, 5)
+        yield from caput("%s.INDX" % pvnames.subarr2, 13)
 
-   #      caput("%s.NELM" % pvnames.subarr2, 5)
-   #      caput("%s.INDX" % pvnames.subarr2, 13)
+        yield from driver.put(full_data)
+        yield from asyncio.sleep(0.1)
+        subval = yield from subarr2.get()
 
-   #      driver.put(full_data) ;   time.sleep(0.1)
-   #      subval = subarr2.get()
+        self.assertEqual(len(subval), 5)
+        np.testing.assert_array_equal(subval, full_data[13:5+13])
 
-   #      self.assertEqual(len(subval), 5)
-   #      self.failUnless(np.all(subval == full_data[13:5+13]))
+#    # waiting on upstream fix decision
+#    @async_test
+#    def test_subarray_zerolen_no_monitor(self):
+#        # a test of a char waveform of length 1 (NORD=1): value "\0"
+#        # without using autom_onitor
+#        zerostr = PV(pvnames.char_arr_zeroish_length_pv, auto_monitor=False)
+#        yield from zerostr.wait_for_connection()
 
-   #  @async_test
-   #  def test_subarray_zerolen_no_monitor(self):
-   #      # a test of a char waveform of length 1 (NORD=1): value "\0"
-   #      # without using autom_onitor
-   #      zerostr = PV(pvnames.char_arr_zeroish_length_pv, auto_monitor=False)
-   #      zerostr.wait_for_connection()
+#        val = yield from zerostr.get(as_string=True)
+#        self.assertEquals(val, '')
+#        val = yield from zerostr.get(as_string=False)
+#        self.assertEquals(val, 0)
 
-   #      self.assertEquals(zerostr.get(as_string=True), '')
-   #      self.assertEquals(zerostr.get(as_string=False), 0)
+#     @async_test
+#     def test_subarray_zerolen_monitor(self):
+#         # a test of a char waveform of length 1 (NORD=1): value "\0"
+#         # with using auto_monitor
+#         zerostr = PV(pvnames.char_arr_zeroish_length_pv, auto_monitor=True)
+#         zerostr.wait_for_connection()
 
-   #  @async_test
-   #  def test_subarray_zerolen_monitor(self):
-   #      # a test of a char waveform of length 1 (NORD=1): value "\0"
-   #      # with using auto_monitor
-   #      zerostr = PV(pvnames.char_arr_zeroish_length_pv, auto_monitor=True)
-   #      zerostr.wait_for_connection()
+#         self.assertEquals(zerostr.get(as_string=True), '')
+#         self.assertEquals(zerostr.get(as_string=False), 0)
 
-   #      self.assertEquals(zerostr.get(as_string=True), '')
-   #      self.assertEquals(zerostr.get(as_string=False), 0)
+    @async_test
+    def test_subarray_zerolen(self):
+        subarr1 = PV(pvnames.zero_len_subarr1)
+        yield from subarr1.wait_for_connection()
 
-   #  @async_test
-   #  def test_subarray_zerolen(self):
-   #      subarr1 = PV(pvnames.zero_len_subarr1)
-   #      subarr1.wait_for_connection()
+        val = yield from subarr1.get(use_monitor=True, as_numpy=True)
+        self.assertIsInstance(val, np.ndarray, msg='using monitor')
+        self.assertEquals(len(val), 0, msg='using monitor')
+        self.assertEquals(val.dtype, np.float64, msg='using monitor')
 
-   #      val = subarr1.get(use_monitor=True, as_numpy=True)
-   #      self.assertIsInstance(val, np.ndarray, msg='using monitor')
-   #      self.assertEquals(len(val), 0, msg='using monitor')
-   #      self.assertEquals(val.dtype, np.float64, msg='using monitor')
+        val = yield from subarr1.get(use_monitor=False, as_numpy=True)
+        self.assertIsInstance(val, np.ndarray, msg='no monitor')
+        self.assertEquals(len(val), 0, msg='no monitor')
+        self.assertEquals(val.dtype, np.float64, msg='no monitor')
 
-   #      val = subarr1.get(use_monitor=False, as_numpy=True)
-   #      self.assertIsInstance(val, np.ndarray, msg='no monitor')
-   #      self.assertEquals(len(val), 0, msg='no monitor')
-   #      self.assertEquals(val.dtype, np.float64, msg='no monitor')
+    @async_test
+    def test_enum_put(self):
+        pv = PV(pvnames.enum_pv)
+        yield from pv.put('Stop')
+        yield from asyncio.sleep(0.1)
+        val = yield from pv.get()
+        self.assertEqual(val, 0)
 
-   #  @async_test
-   #  def testEnumPut(self):
-   #      pv = PV(pvnames.enum_pv)
-   #      self.assertIsNot(pv, None)
-   #      yield from pv.put('Stop')
-   #      time.sleep(0.1)
-   #      val = yield from pv.get()
-   #      self.assertEqual(val, 0)
+    @async_test
+    def test_DoubleVal(self):
+        pvn = pvnames.double_pv
+        pv = PV(pvn)
+        yield from pv.get()
+        cdict = yield from pv.get_ctrlvars()
+        print('Testing CTRL Values for a Double (%s)\n' % (pvn))
+        self.assertIn('severity', cdict)
+        self.assertEqual(pv.count,1)
+        self.assertEqual(pv.precision, pvnames.double_pv_prec)
+        self.assertEqual(pv.units, pvnames.double_pv_units)
+        self.failUnless(pv.access.startswith('read'))
+        self.assertGreater(len(pv.host), 1)
 
+#    @async_test
+#    @no_simulator_updates
+#    @asyncio.coroutine
+#    def test_type_conversions_2(self):
+#        print("CA type conversions arrays\n")
+#        pvlist = (pvnames.char_arr_pv,
+#                  pvnames.long_arr_pv,
+#                  pvnames.double_arr_pv)
+#
+#        chids = []
+#        for name in pvlist:
+#            chid = ca.create_channel(name)
+#            ca.connect_channel(chid)
+#            chids.append((chid, name))
+#            ca.poll(evt=0.025, iot=5.0)
+#        ca.poll(evt=0.05, iot=10.0)
+#
+#        values = {}
+#        for chid, name in chids:
+#            values[name] = yield from ca.get(chid)
+#        for promotion in ('ctrl', 'time'):
+#            for chid, pvname in chids:
+#                print('=== %s  chid=%s as %s\n' % (ca.name(chid),
+#                                                   repr(chid), promotion))
+#                yield from asyncio.sleep(0.01)
+#                if promotion == 'ctrl':
+#                    ntype = ca.promote_type(chid, use_ctrl=True)
+#                else:
+#                    ntype = ca.promote_type(chid, use_time=True)
+#
+#                val = yield from ca.get(chid, ftype=ntype)
+#                cval = yield from ca.get(chid, as_string=True)
+#                for a, b in zip(val, values[pvname]):
+#                    self.assertEqual(a, b)
 
-   #  @async_test
-   #  def test_DoubleVal(self):
-   #      pvn = pvnames.double_pv
-   #      pv = PV(pvn)
-   #      yield from pv.get()
-   #      cdict = yield from pv.get_ctrlvars()
-   #      print( 'Testing CTRL Values for a Double (%s)\n'   % (pvn))
-   #      self.failUnless('severity' in cdict)
-   #      self.failUnless(len(pv.host) > 1)
-   #      self.assertEqual(pv.count,1)
-   #      self.assertEqual(pv.precision, pvnames.double_pv_prec)
-   #      units= ca.BYTES2STR(pv.units)
-   #      self.assertEqual(units, pvnames.double_pv_units)
-   #      self.failUnless(pv.access.startswith('read'))
-
-
-   #  @async_test
-   #  def test_type_converions_2(self):
-   #      print("CA type conversions arrays\n")
-   #      pvlist = (pvnames.char_arr_pv,
-   #                pvnames.long_arr_pv,
-   #                pvnames.double_arr_pv)
-   #      with no_simulator_updates():
-   #          chids = []
-   #          for name in pvlist:
-   #              chid = ca.create_channel(name)
-   #              ca.connect_channel(chid)
-   #              chids.append((chid, name))
-   #              ca.poll(evt=0.025, iot=5.0)
-   #          ca.poll(evt=0.05, iot=10.0)
-
-   #          values = {}
-   #          for chid, name in chids:
-   #              values[name] = = yield from ca.get(chid)
-   #          for promotion in ('ctrl', 'time'):
-   #              for chid, pvname in chids:
-   #                  print('=== %s  chid=%s as %s\n' % (ca.name(chid),
-   #                                                     repr(chid), promotion))
-   #                  time.sleep(0.01)
-   #                  if promotion == 'ctrl':
-   #                      ntype = ca.promote_type(chid, use_ctrl=True)
-   #                  else:
-   #                      ntype = ca.promote_type(chid, use_time=True)
-
-   #                  val = = yield from ca.get(chid, ftype=ntype)
-   #                  cval = = yield from ca.get(chid, as_string=True)
-   #                  for a, b in zip(val, values[pvname]):
-   #                      self.assertEqual(a, b)
-
-   #  @async_test
-   #  def test_waveform_get_1elem(self):
-   #      pv = PV(pvnames.double_arr_pv)
-   #      val = yield from pv.get(count=1, use_monitor=False)
-   #      self.failUnless(isinstance(val, np.ndarray))
-   #      self.failUnless(len(val), 1)
+    @async_test
+    def test_waveform_get_1elem(self):
+        pv = PV(pvnames.double_arr_pv)
+        val = yield from pv.get(count=1, use_monitor=False)
+        self.assertIsInstance(val, np.ndarray)
+        self.assertEquals(len(val), 1)
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase( PV_Tests)
     unittest.TextTestRunner(verbosity=1).run(suite)
-
-
-#     chid = ca.create_channel(pvnames.int_pv,
-#                              callback=onConnect)
-#
-#     time.sleep(0.1)
-
