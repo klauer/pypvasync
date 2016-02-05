@@ -226,40 +226,34 @@ class PV_Tests(unittest.TestCase):
         self.failUnless(pv.access.startswith('read'))
         self.assertGreater(len(pv.host), 1)
 
-#    @async_test
-#    @no_simulator_updates
-#    @asyncio.coroutine
-#    def test_type_conversions_2(self):
-#        print("CA type conversions arrays\n")
-#        pvlist = (pvnames.char_arr_pv,
-#                  pvnames.long_arr_pv,
-#                  pvnames.double_arr_pv)
-#
-#        chids = []
-#        for name in pvlist:
-#            chid = ca.create_channel(name)
-#            ca.connect_channel(chid)
-#            chids.append((chid, name))
-#            ca.poll(evt=0.025, iot=5.0)
-#        ca.poll(evt=0.05, iot=10.0)
-#
-#        values = {}
-#        for chid, name in chids:
-#            values[name] = yield from ca.get(chid)
-#        for promotion in ('ctrl', 'time'):
-#            for chid, pvname in chids:
-#                print('=== %s  chid=%s as %s\n' % (ca.name(chid),
-#                                                   repr(chid), promotion))
-#                yield from asyncio.sleep(0.01)
-#                if promotion == 'ctrl':
-#                    ntype = ca.promote_type(chid, use_ctrl=True)
-#                else:
-#                    ntype = ca.promote_type(chid, use_time=True)
-#
-#                val = yield from ca.get(chid, ftype=ntype)
-#                cval = yield from ca.get(chid, as_string=True)
-#                for a, b in zip(val, values[pvname]):
-#                    self.assertEqual(a, b)
+    @async_test
+    @no_simulator_updates
+    @asyncio.coroutine
+    def test_type_conversions_2(self):
+        print("CA type conversions arrays\n")
+        pvlist = (pvnames.char_arr_pv,
+                  pvnames.long_arr_pv,
+                  pvnames.double_arr_pv)
+
+        native_pvs = [PV(pv, form='native') for pv in pvlist]
+        native_values = {}
+
+        for native_pv in native_pvs:
+            native_values[native_pv] = yield from native_pv.get()
+
+        for promotion in ('ctrl', 'time'):
+            for native_pv, native_value in native_values.items():
+                promoted_pv = PV(native_pv.pvname, form=promotion)
+
+                val = yield from promoted_pv.get(as_numpy=True)
+                cval = yield from promoted_pv.get(as_string=True)
+
+                msg = 'pv {} form={}'.format(native_pv.pvname, promotion)
+                if isinstance(val, np.ndarray):
+                    np.testing.assert_array_almost_equal(val, native_value,
+                                                         err_msg=msg)
+                else:
+                    self.assertEqual(val, native_value, msg=msg)
 
     @async_test
     def test_waveform_get_1elem(self):

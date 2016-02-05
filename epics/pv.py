@@ -132,10 +132,17 @@ class PV(object):
         # callback happens inbetween
         self._context.subscribe(sig='connection', func=self.__on_connect,
                                 chid=self.chid)
-        self.ftype = dbr.promote_type(ca.field_type(self.chid),
-                                      use_ctrl=(self.form == 'ctrl'),
-                                      use_time=(self.form == 'time'))
-        self._args['type'] = ChannelType(self.ftype).name.lower()
+
+        native_type = ca.field_type(self.chid)
+        try:
+            self.ftype = dbr.promote_type(native_type,
+                                          use_ctrl=(self.form == 'ctrl'),
+                                          use_time=(self.form == 'time'))
+            self._args['type'] = ChannelType(self.ftype).name.lower()
+        except ValueError:
+            # type is not yet known
+            self.ftype = None
+            self._args['type'] = None
 
         pvid = self._pvid
         if pvid not in _PVcache_:
@@ -144,6 +151,9 @@ class PV(object):
     @property
     def _pvid(self):
         return (self.pvname, self.form, self._context)
+
+    def __hash__(self):
+        return hash(self._pvid)
 
     def _connected(self, chid):
         self.chid = dbr.chid_t(chid)
