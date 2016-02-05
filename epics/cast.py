@@ -1,45 +1,48 @@
 import ctypes
 import ctypes.util
 
-from copy import deepcopy
-from .utils import (BYTES2STR, NULLCHAR, NULLCHAR_2, strjoin, is_string,
+from .utils import (BYTES2STR, NULLCHAR, is_string,
                     is_string_or_bytes, ascii_string)
 
 import numpy
 from . import dbr
-from . import config
 from .dbr import native_type
 from .ca import (element_count, field_type, withConnectedCHID)
 from .errors import ChannelAccessException
 from .dbr import ChannelType
 
 
+def decode_string(bytes_, encoding='latin-1'):
+    try:
+        bytes_ = bytes_[:bytes_.index(0)]
+    except ValueError:
+        pass
+
+    return bytes_.decode(encoding)
+
+
 def scan_string(data, count):
     """ Scan a string, or an array of strings as a list, depending on
     content """
-    out = []
-    for elem in range(min(count, len(data))):
-        this = strjoin('', BYTES2STR(data[elem].value)).rstrip()
-        if NULLCHAR_2 in this:
-            this = this[:this.index(NULLCHAR_2)]
-        out.append(this)
-    if len(out) == 1:
-        out = out[0]
-    return out
+    count = min(count, len(data))
+
+    if count == 1:
+        return decode_string(data[0].value)
+
+    return [decode_string(data[elem].value)
+            for elem in range(count)]
 
 
-def array_cast(data, count, ntype, use_numpy):
+def to_numpy_array(data, count, ntype):
     "cast ctypes array to numpy array (if using numpy)"
-    if use_numpy:
-        dtype = dbr._numpy_map.get(ntype, None)
-        if dtype is not None:
-            out = numpy.empty(shape=(count,), dtype=dbr._numpy_map[ntype])
-            ctypes.memmove(out.ctypes.data, data, out.nbytes)
-        else:
-            out = numpy.ctypeslib.as_array(deepcopy(data))
+    try:
+        dtype = dbr._numpy_map[ntype]
+    except KeyError:
+        return numpy.ctypeslib.as_array(data)
     else:
-        out = deepcopy(data)
-    return out
+        ret = numpy.empty(shape=(count, ), dtype=dtype)
+        ctypes.memmove(ret.ctypes.data, data, ret.nbytes)
+        return ret
 
 
 def unpack_simple(data, count, ntype, use_numpy):
@@ -50,8 +53,8 @@ def unpack_simple(data, count, ntype, use_numpy):
         return data[0]
     elif ntype == ChannelType.STRING:
         return scan_string(data, count)
-    elif count != 1:
-        return array_cast(data, count, ntype, use_numpy)
+    elif count != 1 and use_numpy:
+        return to_numpy_array(data, count, ntype)
     return data
 
 
@@ -64,8 +67,8 @@ def unpack(chid, data, count=None, ftype=None, as_numpy=True):
     ------------
     chid  :  ctypes.c_long or ``None``
         channel ID (if not None, used for determining count and ftype)
-    data  :  object
-        raw data as returned by internal libca functions.
+    data  :  ctypes.array
+        the ctypes array of native-typed elements
     count :  integer
         number of elements to fetch (defaults to element count of chid  or 1)
     ftype :  integer
@@ -74,13 +77,7 @@ def unpack(chid, data, count=None, ftype=None, as_numpy=True):
         whether to convert to numpy array.
     """
 
-
     # Grab the native-data-type data
-    try:
-        data = data[1]
-    except (TypeError, IndexError):
-        return None
-
     if count is None or count == 0:
         count = len(data)
     else:
@@ -90,6 +87,7 @@ def unpack(chid, data, count=None, ftype=None, as_numpy=True):
         ftype = field_type(chid)
     if ftype is None:
         ftype = ChannelType.INT
+
     ntype = native_type(ftype)
     use_numpy = (as_numpy and ntype != ChannelType.STRING and count != 1)
     return unpack_simple(data, count, ntype, use_numpy)
@@ -199,7 +197,7 @@ def cast_monitor_args(args):
         except IndexError:
             pass
 
-    value = unpack(args.chid, value, count=args.count, ftype=args.type)
+    value = unpack(args.chid, value[1], count=args.count, ftype=args.type)
     kwds['value'] = value
     return kwds
 

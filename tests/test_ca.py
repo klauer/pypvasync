@@ -10,7 +10,8 @@ import ctypes
 from epics import ca, dbr, caput
 
 from .util import (no_simulator_updates, async_test)
-import pvnames
+from . import pvnames
+
 
 def _ca_connect(chid,timeout=5.0):
     n  = 0

@@ -149,24 +149,25 @@ def get(chid, ftype=None, count=None, timeout=None, as_string=False,
         timeout = 1.0 + log10(max(1, count))
 
     try:
-        value = yield from asyncio.wait_for(future, timeout=timeout)
+        data = yield from asyncio.wait_for(future, timeout=timeout)
     except asyncio.TimeoutError:
         future.cancel()
         raise
 
-    # print("Get Complete> Unpack ", value, count, ftype)
-    val = cast.unpack(chid, value, count=count, ftype=ftype, as_numpy=as_numpy)
-    # print("Get Complete unpacked to ", val)
+    promoted_data, ntype_array = data
+    unpacked = cast.unpack(chid, ntype_array, count=count, ftype=ftype,
+                           as_numpy=as_numpy)
 
     if as_string:
         try:
-            val = yield from _as_string(val, chid, count, ftype)
+            unpacked = yield from _as_string(unpacked, chid, count, ftype)
         except ValueError:
             pass
-    elif isinstance(val, ctypes.Array) and as_numpy:
-        val = numpy.ctypeslib.as_array(deepcopy(val))
+    elif isinstance(unpacked, ctypes.Array) and as_numpy:
+        return cast.to_numpy_array(unpacked, count=len(unpacked),
+                                   ntype=dbr.native_type(ftype))
 
-    return val
+    return unpacked
 
 
 @withConnectedCHID
