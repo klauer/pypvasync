@@ -27,7 +27,6 @@ from . import errors
 # holder for shared library
 initial_context = None
 error_message = ''
-_namecache = {}
 libca = None
 
 
@@ -275,16 +274,7 @@ def test_io():
 @withCHID
 def name(chid):
     "return PV name for channel name"
-    global _namecache
-    # sys.stdout.write("NAME %s %s\n" % (repr(chid), repr(chid.value in
-    #                  _namecache)))
-    # sys.stdout.flush()
-
-    if chid.value in _namecache:
-        val = _namecache[chid.value]
-    else:
-        val = _namecache[chid.value] = BYTES2STR(libca.ca_name(chid))
-    return val
+    return BYTES2STR(libca.ca_name(chid))
 
 
 @withCHID
