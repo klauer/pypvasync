@@ -5,8 +5,6 @@ import ctypes.util
 from math import log10
 from functools import partial
 
-from .utils import strjoin
-
 from . import ca
 from . import dbr
 from . import config
@@ -50,7 +48,7 @@ def _as_string(val, chid, count, ftype):
     This is a coroutine since it may hit channel access to get the enum string
     '''
     if (ftype in dbr.char_types and count < config.AUTOMONITOR_MAXLENGTH):
-        val = strjoin('', [chr(i) for i in val if i > 0]).strip()
+        val = ''.join(chr(i) for i in val if i > 0).rstrip()
     elif ftype == dbr.ChannelType.ENUM and count == 1:
         val = yield from get_enum_strings(chid)[val]
     elif count > 1:

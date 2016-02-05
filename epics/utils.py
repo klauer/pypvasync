@@ -20,29 +20,6 @@ def STR2BYTES(st1):
     return bytes(st1, 'latin-1')
 
 
-def BYTES2STR(st1):
-    '''byte to string conversion'''
-    if isinstance(st1, bytes):
-        return str(st1, 'latin-1')
-    return str(st1)
-
-
-def strjoin(sep, seq):
-    "join string sequence with a separator"
-    if isinstance(sep, bytes):
-        sep = BYTES2STR(sep)
-    if len(seq) == 0:
-        seq = ''
-    elif isinstance(seq[0], bytes):
-        tmp = []
-        for i in seq:
-            if i == NULLCHAR:
-                break
-            tmp.append(BYTES2STR(i))
-        seq = tmp
-    return sep.join(seq)
-
-
 def ascii_string(s):
     return s.encode('latin-1')
 
