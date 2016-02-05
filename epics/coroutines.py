@@ -132,7 +132,10 @@ def get(chid, ftype=None, count=None, timeout=None, as_string=False,
     if ftype in (None, -1):
         return None
     if count is None:
-        count = ca.element_count(chid)
+        count = 0
+        # count = element_count(chid)
+        # don't default to the element_count here - let EPICS tell us the size
+        # in the _onGetEvent callback
     else:
         count = min(count, ca.element_count(chid))
 

@@ -323,7 +323,7 @@ class PV(object):
             self._args['char_value'] = val
             return val
         # char waveform as string
-        if ntype == dbr.ChType.CHAR and self.count < ca.AUTOMONITOR_MAXLENGTH:
+        if ntype == dbr.ChType.CHAR and self.count < config.AUTOMONITOR_MAXLENGTH:
             if isinstance(val, np.ndarray):
                 val = val.tolist()
             elif self.count == 1:  # handles single character in waveform
