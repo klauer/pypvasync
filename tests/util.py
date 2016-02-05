@@ -1,22 +1,29 @@
 import asyncio
 import functools
+import logging
+
 import epics
 
-from contextlib import contextmanager
-
+from . import pvnames
 
 loop = asyncio.get_event_loop()
+logger = logging.getLogger(__name__)
+
+logger.setLevel(logging.DEBUG)
 
 
-@contextmanager
 def no_simulator_updates(coroutine):
     '''Context manager which pauses and resumes simulator PV updating'''
     @functools.wraps(coroutine)
     def inner(self, *args, **kwargs):
         try:
+            logger.debug('Pausing updating of simulator PVs')
+            print('* Pausing updating of simulator PVs')
             yield from epics.caput(pvnames.pause_pv, 1)
-            yield from coroutine()
+            yield from coroutine(self, *args, **kwargs)
         finally:
+            logger.debug('Resuming updating of simulator PVs')
+            print('* Resuming updating of simulator PVs')
             yield from epics.caput(pvnames.pause_pv, 0)
 
     return inner

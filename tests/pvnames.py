@@ -42,8 +42,10 @@ double_arrays   = ['Py:double128', 'Py:double2k', 'Py:double64k']
 ####
 # provide a single motor prefix (to which '.VAL' and '.RBV' etc will be added)
 
-motor_prefix = '13XRM:'
-motor_list = ['%sm%i' % (motor_prefix, i+1) for i in range(4)]
+motor_prefix = 'XF:31IDA-OP'
+
+motor_list = ['%s{Tbl-Ax:X%d}Mtr' % (motor_prefix, i)
+              for i in range(1, 8)]
 motor1 = motor_list[0]
 motor2 = motor_list[1]
 
