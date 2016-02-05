@@ -146,17 +146,8 @@ def channel_id_to_int(chid):
 @withCA
 @withSEVCHK
 def context_create(ctx=None):
-    "create a context. if argument is None, use PREEMPTIVE_CALLBACK"
-    if ctx is None:
-        ctx = {False: 0, True: 1}[config.PREEMPTIVE_CALLBACK]
-    return libca.ca_context_create(ctx)
-
-
-def create_context(ctx=None):
     """Create a new context, using the value of :data:`PREEMPTIVE_CALLBACK`
-    to set the context type. Note that both *context_create* and
-    *create_context* (which is more consistent with the Verb_Object of
-    the rest of the CA library) are supported.
+    to set the context type.
 
     Parameters
     ----------
@@ -164,21 +155,16 @@ def create_context(ctx=None):
        0 -- No preemptive callbacks,
        1 -- use use preemptive callbacks,
        None -- use value of :data:`PREEMPTIVE_CALLBACK`
-
     """
-    context_create(ctx=ctx)
+    if ctx is None:
+        ctx = {False: 0, True: 1}[config.PREEMPTIVE_CALLBACK]
+    return libca.ca_context_create(ctx)
 
 
 @withCA
 def context_destroy():
     "destroy current context"
-    ret = libca.ca_context_destroy()
-    return ret
-
-
-def destroy_context():
-    "destroy current context"
-    return context_destroy()
+    return libca.ca_context_destroy()
 
 
 @withCA
@@ -370,7 +356,7 @@ class CAThread(Thread):
 
     def run(self):
         if sys.platform == 'darwin':
-            create_context()
+            context_create()
         else:
             use_initial_context()
         super().run()
