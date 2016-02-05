@@ -17,7 +17,6 @@ from . import ca
 from . import dbr
 from . import config
 from .context import get_current_context
-from .utils import is_string
 from . import coroutines
 from .dbr import ChannelType
 
@@ -301,7 +300,7 @@ class PV(object):
         """
         yield from self.wait_for_connection()
 
-        if self.ftype in dbr.enum_types and is_string(value):
+        if self.ftype in dbr.enum_types and isinstance(value, str):
             enum_strs = self._args['enum_strs']
             if enum_strs is None:
                 ctrlvars = yield from self.get_ctrlvars()

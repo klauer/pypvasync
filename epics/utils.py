@@ -43,14 +43,6 @@ def strjoin(sep, seq):
     return sep.join(seq)
 
 
-def is_string(s):
-    return isinstance(s, str)
-
-
-def is_string_or_bytes(s):
-    return isinstance(s, str) or isinstance(s, bytes)
-
-
 def ascii_string(s):
     return s.encode('latin-1')
 
