@@ -168,8 +168,7 @@ def get(chid, ftype=None, count=None, timeout=None, as_string=False,
 
 @withConnectedCHID
 @asyncio.coroutine
-def put(chid, value, wait=False, timeout=30, callback=None,
-        callback_data=None):
+def put(chid, value, timeout=30, callback=None, callback_data=None):
     """sets the Channel to a value, with options to either wait (block) for the
     processing to complete, or to execute a supplied callback function when the
     process has completed.
@@ -178,9 +177,6 @@ def put(chid, value, wait=False, timeout=30, callback=None,
     ----------
     chid :  ctypes.c_long
         Channel ID
-    wait : bool
-        whether to wait for processing to complete (or time-out)
-        before returning.
     timeout : float
         maximum time to wait for processing to complete before returning
         anyway.
@@ -189,19 +185,9 @@ def put(chid, value, wait=False, timeout=30, callback=None,
     """
 
     ftype, count, data = cast.get_put_info(chid, value)
-    # simple put, without wait or callback
-    if not (wait or callable(callback)):
-        ret = ca.libca.ca_array_put(ftype, count, chid, data)
-        PySEVCHK('put', ret)
-        # poll()
-        return ret
-
     future = CAFuture()
-    print('callback is', callback)
     if callable(callback):
-        print('adding done callback', callback)
-        future.add_done_callback(partial(callback, pvname=ca.name(chid),
-                                         data=callback_data))
+        future.add_done_callback(partial(callback, data=callback_data))
 
     ret = ca.libca.ca_array_put_callback(ftype, count, chid, data,
                                          context._on_put_event.ca_callback,
@@ -215,9 +201,6 @@ def put(chid, value, wait=False, timeout=30, callback=None,
         future.cancel()
         raise
 
-    print('put returned')
-    # if callable(callback):
-    #     callback(pvname=ca.name(chid), data=callback_data)
     return ret
 
 
@@ -339,19 +322,19 @@ def get_enum_strings(chid):
 
 
 @asyncio.coroutine
-def caput(pvname, value, *, wait=True, timeout=60):
-    """caput(pvname, value, wait=False, timeout=60)
-    simple put to a pv's value.
-       >>> caput('xx.VAL',3.0)
+def caput(pvname, value, *, timeout=60):
+    """Put to a pv's value.
 
-    to wait for pv to complete processing, use 'wait=True':
-       >>> caput('xx.VAL',3.0,wait=True)
+    >>> def coroutine():
+    ...     yield from caput('xx.VAL', 3.0)
+    ...     print('put done')
     """
     from .pv import get_pv
     thispv = yield from get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
-    ret = yield from thispv.put(value, wait=wait, timeout=timeout)
+
+    ret = yield from thispv.put(value, timeout=timeout)
     return ret
 
 

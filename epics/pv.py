@@ -283,8 +283,8 @@ class PV(object):
         return val
 
     @asyncio.coroutine
-    def put(self, value, wait=False, timeout=30.0,
-            use_complete=False, callback=None, callback_data=None):
+    def put(self, value, timeout=30.0, use_complete=False, callback=None,
+            callback_data=None):
         """set value for PV, optionally waiting until the processing is
         complete, and optionally specifying a callback function to be run
         when the processing is complete.
@@ -302,13 +302,13 @@ class PV(object):
                         value = ival
                         break
         if use_complete and callback is None:
-            callback = self.__putCallbackStub
-        yield from coroutines.put(self.chid, value, wait=wait, timeout=timeout,
+            callback = self._put_callback
+        yield from coroutines.put(self.chid, value, timeout=timeout,
                                   callback=callback,
                                   callback_data=callback_data)
 
-    def __putCallbackStub(self, pvname=None, **kws):
-        "null put-calback, so that the put_complete attribute is valid"
+    def _put_callback(self, pvname=None, **kws):
+        '''default put-callback function'''
         pass
 
     def _set_charval(self, val, call_ca=True):
