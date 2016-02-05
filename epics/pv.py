@@ -114,7 +114,8 @@ class PV(object):
         self._args = dict(value=None,
                           pvname=self.pvname,
                           count=-1,
-                          precision=None)
+                          precision=None,
+                          enum_strs=None)
 
         if connection_callback is not None:
             self.connection_callbacks = [connection_callback]
@@ -188,7 +189,6 @@ class PV(object):
 
     def __on_connect(self, pvname=None, chid=None, connected=True):
         "callback for connection events"
-        print('on connect', self, connected)
         if connected:
             self._connected(chid)
 
@@ -292,8 +292,11 @@ class PV(object):
         yield from self.wait_for_connection()
 
         if self.ftype in dbr.enum_types and is_string(value):
-            if self._args['enum_strs'] is None:
-                yield from self.get_ctrlvars()
+            enum_strs = self._args['enum_strs']
+            if enum_strs is None:
+                ctrlvars = yield from self.get_ctrlvars()
+                enum_strs = ctrlvars['enum_strs']
+
             if value in self._args['enum_strs']:
                 # tuple.index() not supported in python2.5
                 # value = self._args['enum_strs'].index(value)
@@ -369,7 +372,7 @@ class PV(object):
     @asyncio.coroutine
     def get_ctrlvars(self, timeout=5, warn=True):
         "get control values for variable"
-        yield from self.wait_for_connection()
+        yield from self.wait_for_connection(timeout=timeout)
         kwds = yield from coroutines.get_ctrlvars(self.chid, timeout=timeout,
                                                   warn=warn)
         self._args.update(kwds)

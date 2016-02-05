@@ -234,7 +234,7 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
     PySEVCHK('get_ctrlvars', ret)
 
     try:
-        value = yield from asyncio.wait_for(future, timeout=timeout)
+        ctrl_val, nval = yield from asyncio.wait_for(future, timeout=timeout)
     except asyncio.TimeoutError:
         future.cancel()
         raise
@@ -245,15 +245,15 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
                  'upper_alarm_limit', 'upper_warning_limit',
                  'lower_warning_limit', 'lower_alarm_limit',
                  'upper_ctrl_limit', 'lower_ctrl_limit'):
-        if hasattr(value, attr):
-            out[attr] = getattr(value, attr, None)
+        if hasattr(ctrl_val, attr):
+            out[attr] = getattr(ctrl_val, attr, None)
             if attr == 'units':
-                out[attr] = BYTES2STR(getattr(value, attr, None))
+                out[attr] = BYTES2STR(getattr(ctrl_val, attr, None))
 
-    if (hasattr(value, 'strs') and hasattr(value, 'no_str') and
-            value.no_str > 0):
-        out['enum_strs'] = tuple([BYTES2STR(value.strs[i].value)
-                                  for i in range(value.no_str)])
+    if (hasattr(ctrl_val, 'strs') and hasattr(ctrl_val, 'no_str') and
+            ctrl_val.no_str > 0):
+        out['enum_strs'] = tuple([BYTES2STR(ctrl_val.strs[i].value)
+                                  for i in range(ctrl_val.no_str)])
     return out
 
 
@@ -264,7 +264,6 @@ def get_timevars(chid, timeout=5.0, warn=True):
     This will contain keys of  *status*, *severity*, and *timestamp*.
     """
     global _cache
-    print('get timevars')
     future = CAFuture()
     ftype = dbr.promote_type(ca.field_type(chid), use_time=True)
     ret = ca.libca.ca_array_get_callback(ftype, 1, chid,
