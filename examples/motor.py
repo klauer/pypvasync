@@ -36,7 +36,7 @@ def test_caget():
     print()
     print('-----------')
     print('move to 1.2')
-    yield from epics.caput(write_pvname, 1.2, timeout=2.0)
+    yield from epics.caput(write_pvname, 1.2, timeout=5.0)
     yield from asyncio.sleep(0.1)
     value = yield from epics.caget(pvname)
     print('read back', value)
@@ -44,7 +44,7 @@ def test_caget():
     print()
     print('-----------')
     print('move to 0.9')
-    yield from epics.caput(write_pvname, 0.9, timeout=2.0)
+    yield from epics.caput(write_pvname, 0.9, timeout=5.0)
     yield from asyncio.sleep(0.1)
     value = yield from epics.caget(pvname)
     print('read back', value)
@@ -68,6 +68,7 @@ def test_caget():
     thread_id = []
     write_pv = epics.PV(write_pvname)
     yield from write_pv.put(1.0, callback=move_done, callback_data=thread_id)
+    print('main function, move completed')
 
     assert threading.get_ident() == thread_id[0], 'Callback not in same thread'
     yield from asyncio.sleep(0.1)
