@@ -83,7 +83,7 @@ class PV(object):
     _fmtarr = ("PV(%(pvname)r, count=%(count)i/%(nelm)i, "
                "type=%(typefull)r, access=%(access)r>")
 
-    def __init__(self, pvname, callback=None, form='time', auto_monitor=None,
+    def __init__(self, pvname, form='time', auto_monitor=None,
                  connection_callback=None, connection_timeout=None,
                  monitor_mask=None):
 
@@ -109,13 +109,6 @@ class PV(object):
 
         if connection_callback is not None:
             self.connection_callbacks = [connection_callback]
-
-        if isinstance(callback, (tuple, list)):
-            for i, thiscb in enumerate(callback):
-                if hasattr(thiscb, '__call__'):
-                    self.callbacks[i] = (thiscb, {})
-        elif hasattr(callback, '__call__'):
-            self.callbacks[0] = (callback, {})
 
         self.chid = self._context.create_channel(self.pvname)
         # subscribe should be smart enough to run the subscription if the
