@@ -271,7 +271,8 @@ class CAContextHandler:
 
         self.subscribe(sig='connection', chid=chid, func=connection_update,
                        oneshot=True)
-        yield from fut
+
+        yield from asyncio.wait_for(fut, timeout=timeout)
 
     def _event_queue_loop(self):
         loop = self._loop
