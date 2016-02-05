@@ -240,6 +240,7 @@ class PV_Tests(unittest.TestCase):
 
         for native_pv in native_pvs:
             native_values[native_pv] = yield from native_pv.get()
+            info = yield from native_pv.get_info()
 
         for promotion in ('ctrl', 'time'):
             for native_pv, native_value in native_values.items():
@@ -261,6 +262,8 @@ class PV_Tests(unittest.TestCase):
         val = yield from pv.get(count=1, use_monitor=False)
         self.assertIsInstance(val, np.ndarray)
         self.assertEquals(len(val), 1)
+        info = yield from pv.get_info()
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase( PV_Tests)

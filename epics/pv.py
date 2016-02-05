@@ -457,10 +457,11 @@ class PV(object):
         self.callbacks = {}
 
     @asyncio.coroutine
-    def get_info(self):
+    def get_info(self, timeout=2.0):
         "get information paragraph"
-        yield from self.wait_for_connection()
-        yield from self.get_ctrlvars()
+        yield from self.wait_for_connection(timeout=timeout)
+        yield from self.get_ctrlvars(timeout=timeout)
+
         out = []
         mod = 'native'
         xtype = self._args['typefull']
