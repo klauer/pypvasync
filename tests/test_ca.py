@@ -7,9 +7,9 @@ import time
 import unittest
 import numpy
 import ctypes
-from contextlib import contextmanager
 from epics import ca, dbr, caput
 
+from .util import (no_simulator_updates, async_test)
 import pvnames
 
 def _ca_connect(chid,timeout=5.0):
@@ -38,15 +38,6 @@ def onChanges(pvname=None, value=None, **kws):
     write( '/// New Value: %s  value=%s, kw=%s' %( pvname, str(value), repr(kws)))
     global CHANGE_DAT
     CHANGE_DAT[pvname] = value
-
-@contextmanager
-def no_simulator_updates():
-    '''Context manager which pauses and resumes simulator PV updating'''
-    try:
-        caput(pvnames.pause_pv, 1)
-        yield
-    finally:
-        caput(pvnames.pause_pv, 0)
 
 class CA_BasicTests(unittest.TestCase):
 
