@@ -124,7 +124,7 @@ def get_put_info(chid, value):
             data[0].value = value
         else:
             for elem in range(min(count, len(value))):
-                data[elem].value = value[elem]
+                data[elem].value = ascii_string(value[elem])
     elif nativecount == 1:
         if ftype == ChannelType.CHAR:
             if is_string_or_bytes(value):
