@@ -182,7 +182,7 @@ def cast_monitor_args(args):
                 if hasattr(tmpv, attr):
                     kwds[attr] = getattr(tmpv, attr)
                     if attr == 'units':
-                        kwds[attr] = BYTES2STR(getattr(tmpv, attr, None))
+                        kwds[attr] = BYTES2STR(getattr(tmpv, attr, ''))
 
             if (hasattr(tmpv, 'strs') and hasattr(tmpv, 'no_str') and
                     tmpv.no_str > 0):

@@ -597,16 +597,9 @@ class PV(object):
         self._disconnect(deleted=True)
 
     def _get_arg(self, arg):
-        # if self._args['value'] is None:
-        #     raise RuntimeError('value not yet retrieved')
-        if arg not in self._args or self._args[arg] is None:
+        if arg not in self._args:
             return None
-            if arg in ('status', 'severity', 'timestamp'):
-                raise RuntimeError('timevars not yet retrieved')
-                # self.get_timevars(timeout=1, warn=False)
-            else:
-                raise RuntimeError('ctrlvars not yet retrieved')
-                # self.get_ctrlvars(timeout=1, warn=False)
+
         return self._args[arg]
 
     def _arg_property(arg, doc):
@@ -621,7 +614,7 @@ class PV(object):
     status = _arg_property('status', doc='pv status')
     type = _arg_property('type', doc='pv type')
     typefull = _arg_property('typefull', doc='pv typefull')
-    host = _arg_property('hostname of the IOC', doc='pv host')
+    host = _arg_property('host', doc='hostname of the IOC')
     count = _arg_property('count', doc='pv count')
     read_access = _arg_property('read_access', doc='pv read access')
     write_access = _arg_property('write_access', doc='pv write access')
