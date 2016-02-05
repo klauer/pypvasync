@@ -19,6 +19,7 @@ from . import config
 from .context import get_current_context
 from .utils import is_string
 from . import coroutines
+from .dbr import ChannelType
 
 _PVcache_ = {}
 
@@ -133,7 +134,7 @@ class PV(object):
         self.ftype = dbr.promote_type(ca.field_type(self.chid),
                                       use_ctrl=(self.form == 'ctrl'),
                                       use_time=(self.form == 'time'))
-        self._args['type'] = dbr.ChannelType(self.ftype).name.lower()
+        self._args['type'] = ChannelType(self.ftype).name.lower()
 
         pvid = self._pvid
         if pvid not in _PVcache_:
@@ -160,7 +161,7 @@ class PV(object):
                                       use_ctrl=self.form == 'ctrl',
                                       use_time=self.form == 'time')
 
-        ftype_name = dbr.ChannelType(self.ftype).name.lower()
+        ftype_name = ChannelType(self.ftype).name.lower()
         self._args['type'] = ftype_name
         self._args['typefull'] = ftype_name
         self._args['ftype'] = self.ftype
@@ -341,7 +342,7 @@ class PV(object):
 
         cval = repr(val)
         if self.count > 1:
-            typename = dbr.ChannelType(ftype).name.lower()
+            typename = ChannelType(ftype).name.lower()
             cval = '<array size=%d, type=%s>' % (len(val), typename)
         elif ntype in dbr.native_float_types:
             if call_ca and self._args['precision'] is None:
@@ -354,7 +355,7 @@ class PV(object):
                 cval = (fmt % prec) % val
             except (ValueError, TypeError, ArithmeticError):
                 cval = str(val)
-        elif ntype == dbr.ENUM:
+        elif ntype == ChannelType.ENUM:
             if call_ca and self._args['enum_strs'] in ([], None):
                 self.get_ctrlvars()
             try:
@@ -563,8 +564,14 @@ class PV(object):
 
         ctx = self._context
         pvid = self._pvid
-        if pvid in _PVcache_:
-            _PVcache_.pop(pvid)
+        try:
+            if pvid in _PVcache_:
+                _PVcache_.pop(pvid)
+        except TypeError:
+            if not deleted:
+                raise
+            # _pvcache_ can get deleted and set to None when getting teared
+            # down
 
         self.callbacks = {}
 

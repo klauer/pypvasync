@@ -54,7 +54,7 @@ def _as_string(val, chid, count, ftype):
     '''
     if (ftype in dbr.char_types and count < config.AUTOMONITOR_MAXLENGTH):
         val = strjoin('', [chr(i) for i in val if i > 0]).strip()
-    elif ftype == dbr.ENUM and count == 1:
+    elif ftype == dbr.ChannelType.ENUM and count == 1:
         val = yield from get_enum_strings(chid)[val]
     elif count > 1:
         val = '<array count=%d, type=%d>' % (count, ftype)
@@ -331,7 +331,7 @@ def get_precision(chid):
 def get_enum_strings(chid):
     """return list of names for ENUM states of a Channel.  Returns
     None for non-ENUM Channels"""
-    if ca.field_type(chid) != dbr.ENUM:
+    if ca.field_type(chid) != dbr.ChannelType.ENUM:
         raise ValueError('Not an enum type')
 
     info = yield from get_ctrlvars(chid)

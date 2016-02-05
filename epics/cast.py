@@ -11,7 +11,7 @@ from . import config
 from .dbr import native_type
 from .ca import (element_count, field_type, withConnectedCHID)
 from .errors import ChannelAccessException
-from .dbr import ChannelType as ChType
+from .dbr import ChannelType
 
 
 def scan_string(data, count):
@@ -46,9 +46,9 @@ def unpack_simple(data, count, ntype, use_numpy):
     "simple, native data type"
     if data is None:
         return None
-    elif count == 1 and ntype != ChType.STRING:
+    elif count == 1 and ntype != ChannelType.STRING:
         return data[0]
-    elif ntype == ChType.STRING:
+    elif ntype == ChannelType.STRING:
         return scan_string(data, count)
     elif count > 1:
         return array_cast(data, count, ntype, use_numpy)
@@ -89,9 +89,9 @@ def unpack(chid, data, count=None, ftype=None, as_numpy=True):
     if ftype is None and chid is not None:
         ftype = field_type(chid)
     if ftype is None:
-        ftype = ChType.INT
+        ftype = ChannelType.INT
     ntype = native_type(ftype)
-    use_numpy = (as_numpy and ntype != ChType.STRING and count > 1)
+    use_numpy = (as_numpy and ntype != ChannelType.STRING and count > 1)
     return unpack_simple(data, count, ntype, use_numpy)
 
 
@@ -108,7 +108,7 @@ def get_put_info(chid, value):
         except TypeError:
             print('''PyEpics Warning:
      value put() to array PV must be an array or sequence''')
-    if (ftype == ChType.CHAR and nativecount > 1 and
+    if (ftype == ChannelType.CHAR and nativecount > 1 and
             is_string_or_bytes(value)):
         count += 1
 
@@ -119,14 +119,14 @@ def get_put_info(chid, value):
         value = ascii_string(value)
 
     data = (count * dbr._ftype_to_ctype[ftype])()
-    if ftype == ChType.STRING:
+    if ftype == ChannelType.STRING:
         if count == 1:
             data[0].value = value
         else:
             for elem in range(min(count, len(value))):
                 data[elem].value = value[elem]
     elif nativecount == 1:
-        if ftype == ChType.CHAR:
+        if ftype == ChannelType.CHAR:
             if is_string_or_bytes(value):
                 if isinstance(value, bytes):
                     value = value.decode('ascii', 'replace')
@@ -143,11 +143,11 @@ def get_put_info(chid, value):
                 data[0] = type(data[0])(value)
             except Exception:
                 errmsg = "cannot put value '%s' to PV of type '%s'"
-                tname = dbr.ChannelType(ftype).name.lower()
+                tname = ChannelType(ftype).name.lower()
                 raise ChannelAccessException(errmsg % (repr(value), tname))
 
     else:
-        if ftype == ChType.CHAR and is_string_or_bytes(value):
+        if ftype == ChannelType.CHAR and is_string_or_bytes(value):
             if isinstance(value, bytes):
                 value = value.decode('ascii', 'replace')
             value = [ord(i) for i in value] + [0, ]
@@ -174,7 +174,7 @@ def cast_monitor_args(args):
     # add kwds arguments for CTRL and TIME variants
     # this is in a try/except clause to avoid problems
     # caused by uninitialized waveform arrays
-    if args.type >= ChType.CTRL_STRING:
+    if args.type >= ChannelType.CTRL_STRING:
         try:
             tmpv = value[0]
             ctrl_names = dbr._ctrl_lims.field_names
@@ -190,7 +190,7 @@ def cast_monitor_args(args):
                                            i in range(tmpv.no_str)])
         except IndexError:
             pass
-    elif args.type >= ChType.TIME_STRING:
+    elif args.type >= ChannelType.TIME_STRING:
         try:
             tmpv = value[0]
             kwds['status'] = tmpv.status
