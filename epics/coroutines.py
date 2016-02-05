@@ -1,15 +1,12 @@
 import asyncio
-import threading
 import ctypes
 import ctypes.util
 
 from math import log10
 from functools import partial
-from copy import deepcopy
 
-from .utils import (BYTES2STR, strjoin)
+from .utils import strjoin
 
-import numpy
 from . import ca
 from . import dbr
 from . import config
@@ -249,11 +246,11 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
         if hasattr(ctrl_val, attr):
             out[attr] = getattr(ctrl_val, attr, None)
             if attr == 'units':
-                out[attr] = BYTES2STR(getattr(ctrl_val, attr, None))
+                out[attr] = ctrl_val.units.decode('ascii')
 
     if (hasattr(ctrl_val, 'strs') and hasattr(ctrl_val, 'no_str') and
             ctrl_val.no_str > 0):
-        out['enum_strs'] = tuple([BYTES2STR(ctrl_val.strs[i].value)
+        out['enum_strs'] = tuple([ctrl_val.strs[i].value.decode('ascii')
                                   for i in range(ctrl_val.no_str)])
     return out
 

@@ -16,7 +16,6 @@ import functools
 
 import sys
 from threading import Thread
-from .utils import BYTES2STR
 
 from . import dbr
 from . import config
@@ -126,6 +125,17 @@ def withConnectedCHID(fcn):
     return wrapper
 
 
+def decode_return_value(encoding='ascii'):
+    '''Decorator to decode a byte string return value, given an encoding'''
+    def wrapper(fcn):
+        @functools.wraps(fcn)
+        def inner(*args, **kwargs):
+            bytes_ = fcn(*args, **kwargs)
+            return bytes_.decode(encoding)
+        return inner
+    return wrapper
+
+
 def access(chid):
     """returns a string describing read/write access: one of
     `no access`, `read-only`, `write-only`, or `read/write`
@@ -232,17 +242,19 @@ def flush_io():
 
 
 @withCA
+@decode_return_value('ascii')
 def message(status):
     """Print a message corresponding to a Channel Access status return value.
     """
-    return BYTES2STR(libca.ca_message(status))
+    return libca.ca_message(status)
 
 
 @withCA
+@decode_return_value('ascii')
 def version():
     """   Print Channel Access version string.
     Currently, this should report '4.13' """
-    return BYTES2STR(libca.ca_version())
+    return libca.ca_version()
 
 
 @withCA
@@ -272,15 +284,17 @@ def test_io():
 
 
 @withCHID
+@decode_return_value('ascii')
 def name(chid):
     "return PV name for channel name"
-    return BYTES2STR(libca.ca_name(chid))
+    return libca.ca_name(chid)
 
 
 @withCHID
+@decode_return_value('ascii')
 def host_name(chid):
     "return host name and port serving Channel"
-    return BYTES2STR(libca.ca_host_name(chid))
+    return libca.ca_host_name(chid)
 
 
 @withCHID
