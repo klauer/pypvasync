@@ -335,6 +335,7 @@ class CAContexts:
 
         CAContexts.instance = self
 
+        self.running = True
         self.contexts = {}
         self.add_context()
         atexit.register(self.stop)
@@ -356,6 +357,8 @@ class CAContexts:
         return self.add_context(ctx)
 
     def stop(self):
+        self.running = False
+
         for ctx_id, context in list(self.contexts.items()):
             context.stop()
             del self.contexts[ctx_id]
@@ -365,6 +368,9 @@ class CAContexts:
         # ca.detach_context()
 
     def add_event(self, ctx, event_type, info):
+        if not self.running:
+            return
+
         ctx_id = int(ctx)
         self.contexts[ctx_id].add_event(event_type, info)
 
@@ -410,17 +416,15 @@ def ca_connection_callback(fcn):
 @ca_connection_callback
 def _on_connection_event(args):
     global _cm
-    info = dict(chid=int(args.chid),
-                connected=(args.op == dbr.ConnStatus.OP_CONN_UP)
-                )
-    _cm.add_event(ca.current_context(), 'connection', info)
+    _cm.add_event(ca.current_context(), 'connection',
+                  args.to_dict())
 
 
 @ca_callback_event
 def _on_monitor_event(args):
     global _cm
-    info = cast.cast_monitor_args(args)
-    _cm.add_event(ca.current_context(), 'monitor', info)
+    _cm.add_event(ca.current_context(), 'monitor',
+                  cast.cast_monitor_args(args))
 
 
 @ca_callback_event

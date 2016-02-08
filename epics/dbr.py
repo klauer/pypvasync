@@ -329,6 +329,10 @@ class ConnectionArgs(ctypes.Structure):
     _fields_ = [('chid', chid_t),
                 ('op', long_t)]
 
+    def to_dict(self):
+        return dict(chid=self.chid,
+                    connected=(self.op == ConnStatus.OP_CONN_UP)
+                    )
 
 _numpy_map = {
     ChType.INT: np.int16,
