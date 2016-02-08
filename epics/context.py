@@ -73,7 +73,7 @@ class MonitorCallback(ChannelCallbackBase):
     #   amask = available_mask / atype = available_type
     #   rmask = requested_mask / rtype = requested_type
     #   (amask & rmask) == rmask
-    #   (rtype <= atype)
+    #   rtype == atype or rtype is native_type(atype)
     default_mask = (dbr.SubscriptionType.DBE_VALUE |
                     dbr.SubscriptionType.DBE_ALARM)
     sig = 'monitor'
@@ -91,6 +91,7 @@ class MonitorCallback(ChannelCallbackBase):
 
         self.mask = int(mask)
         self.ftype = int(ftype)
+        self.native_type = dbr.native_type(self.ftype)
         self._hash_tuple = (self.chid, self.mask, self.ftype)
 
         # monitor information for when it's created:
@@ -157,7 +158,8 @@ class MonitorCallback(ChannelCallbackBase):
                             'channels')
 
         has_req_mask = (other.mask & self.mask) == other.mask
-        type_ok = self.ftype >= other.ftype
+        type_ok = ((self.ftype == other.ftype) or
+                   (self.native_type == other.ftype))
         return has_req_mask and type_ok
 
     def callbacks_emptied(self):
