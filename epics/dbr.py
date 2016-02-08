@@ -156,41 +156,41 @@ class TimeType(ctypes.Structure):
                     )
 
 
-class time_string(TimeType):
+class TimeString(TimeType):
     dbr_type = ChannelType.TIME_STRING
     _fields_ = [('value', MAX_STRING_SIZE * char_t)]
 
 
-class time_short(TimeType):
+class TimeShort(TimeType):
     dbr_type = ChannelType.TIME_SHORT
     _fields_ = [('RISC_pad', short_t),
                 ('value', short_t)]
 
 
-class time_float(TimeType):
+class TimeFloat(TimeType):
     dbr_type = ChannelType.TIME_FLOAT
     _fields_ = [('value', float_t)]
 
 
-class time_enum(TimeType):
+class TimeEnum(TimeType):
     dbr_type = ChannelType.TIME_ENUM
     _fields_ = [('RISC_pad', short_t),
                 ('value', ushort_t)]
 
 
-class time_char(TimeType):
+class TimeChar(TimeType):
     dbr_type = ChannelType.TIME_CHAR
     _fields_ = [('RISC_pad0', short_t),
                 ('RISC_pad1', byte_t),
                 ('value', byte_t)]
 
 
-class time_long(TimeType):
+class TimeLong(TimeType):
     dbr_type = ChannelType.TIME_LONG
     _fields_ = [('value', int_t)]
 
 
-class time_double(TimeType):
+class TimeDouble(TimeType):
     dbr_type = ChannelType.TIME_DOUBLE
     _fields_ = [('RISC_pad', int_t),
                 ('value', double_t)]
@@ -215,6 +215,12 @@ def _ctrl_lims(type_):
 
         ctrl_fields = field_names
 
+        def to_dict(self):
+            kwds = super().to_dict()
+            kwds.update({attr: getattr(self, attr)
+                         for attr in field_names})
+            return kwds
+
     return ctrl_lims
 
 
@@ -225,28 +231,39 @@ ctrl_lims_float = _ctrl_lims(float_t)
 ctrl_lims_double = _ctrl_lims(double_t)
 
 
-class ControlType(ctypes.Structure):
+class ControlTypeBase(ctypes.Structure):
     _fields_ = [('status', short_t),
                 ('severity', short_t),
                 ]
 
     def to_dict(self):
-        kwds = {}
-        for attr in self.ctrl_fields + ['precision', 'severity']:
-            kwds[attr] = getattr(self, attr, None)
-
-        if hasattr(self, 'units'):
-            kwds['units'] = decode_bytes(self.units)
-
-        return kwds
+        return dict(severity=self.severity)
 
 
-class ControlTypeUnits(ControlType):
+class ControlTypeUnits(ControlTypeBase):
     _fields_ = [('units', char_t * MAX_UNITS_SIZE),
                 ]
 
+    def to_dict(self):
+        kwds = super().to_dict()
+        kwds['units'] = decode_bytes(self.units)
+        return kwds
 
-class ctrl_enum(ControlType):
+
+class ControlTypePrecision(ControlTypeBase):
+    _fields_ = [('precision', short_t),
+                ('RISC_pad', short_t),
+                ('units', char_t * MAX_UNITS_SIZE),
+                ]
+
+    def to_dict(self):
+        kwds = super().to_dict()
+        kwds['precision'] = self.precision
+        kwds['units'] = decode_bytes(self.units)
+        return kwds
+
+
+class ctrl_enum(ControlTypeBase):
     dbr_type = ChannelType.CTRL_ENUM
 
     _fields_ = [('no_str', short_t),
@@ -256,7 +273,6 @@ class ctrl_enum(ControlType):
 
     def to_dict(self):
         kwds = super().to_dict()
-
         if self.no_str > 0:
             kwds['enum_strs'] = tuple(decode_bytes(self.strs[i].value)
                                       for i in range(self.no_str))
@@ -279,13 +295,6 @@ class ctrl_char(ctrl_lims_byte, ControlTypeUnits):
 class ctrl_long(ctrl_lims_int, ControlTypeUnits):
     dbr_type = ChannelType.CTRL_LONG
     _fields_ = [('value', int_t)]
-
-
-class ControlTypePrecision(ControlType):
-    _fields_ = [('precision', short_t),
-                ('RISC_pad', short_t),
-                ('units', char_t * MAX_UNITS_SIZE),
-                ]
 
 
 class ctrl_float(ctrl_lims_float, ControlTypePrecision):
@@ -342,17 +351,17 @@ _ftype_to_ctype = {
     ChType.STS_LONG: int_t,
     ChType.STS_DOUBLE: double_t,
 
-    ChType.TIME_STRING: time_string,
-    ChType.TIME_INT: time_short,
-    ChType.TIME_SHORT: time_short,
-    ChType.TIME_FLOAT: time_float,
-    ChType.TIME_ENUM: time_enum,
-    ChType.TIME_CHAR: time_char,
-    ChType.TIME_LONG: time_long,
-    ChType.TIME_DOUBLE: time_double,
+    ChType.TIME_STRING: TimeString,
+    ChType.TIME_INT: TimeShort,
+    ChType.TIME_SHORT: TimeShort,
+    ChType.TIME_FLOAT: TimeFloat,
+    ChType.TIME_ENUM: TimeEnum,
+    ChType.TIME_CHAR: TimeChar,
+    ChType.TIME_LONG: TimeLong,
+    ChType.TIME_DOUBLE: TimeDouble,
 
     # Note: there is no ctrl string in the C definition
-    ChType.CTRL_STRING: time_string,
+    ChType.CTRL_STRING: TimeString,
     ChType.CTRL_SHORT: ctrl_short,
     ChType.CTRL_INT: ctrl_short,
     ChType.CTRL_FLOAT: ctrl_float,

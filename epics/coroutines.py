@@ -235,7 +235,7 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
         future.cancel()
         raise
 
-    if not isinstance(ctrl_val, dbr.ControlType):
+    if not isinstance(ctrl_val, dbr.ControlTypeBase):
         raise RuntimeError('Got back a non-ControlType struct. '
                            'Type: {}'.format(type(ctrl_val)))
 
@@ -343,7 +343,7 @@ def caget(pvname, *, as_string=False, count=None, as_numpy=True,
         raise asyncio.TimeoutError()
 
     if as_string:
-        thispv.get_ctrlvars()
+        yield from thispv.get_ctrlvars()
     val = yield from thispv.get(count=count, timeout=timeout,
                                 use_monitor=use_monitor,
                                 as_string=as_string, as_numpy=as_numpy)
