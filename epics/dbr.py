@@ -208,7 +208,7 @@ def _create_ctrl_lims(type_):
                    'lower_ctrl_limit',
                    ]
 
-    class ctrl_lims(ctypes.Structure):
+    class CtrlLims(ctypes.Structure):
         _fields_ = [(field, type_)
                     for field in field_names
                     ]
@@ -221,7 +221,7 @@ def _create_ctrl_lims(type_):
                          for attr in field_names})
             return kwds
 
-    return ctrl_lims
+    return CtrlLims
 
 
 CtrlLimitsShort = _create_ctrl_lims(short_t)
@@ -307,7 +307,7 @@ class CtrlDouble(CtrlLimitsDouble, ControlTypePrecision):
     _fields_ = [('value', double_t)]
 
 
-class event_handler_args(ctypes.Structure):
+class EventHandlerArgs(ctypes.Structure):
     '''event handler arguments'''
     _fields_ = [('usr', ctypes.py_object),
                 ('chid', chid_t),
@@ -317,7 +317,7 @@ class event_handler_args(ctypes.Structure):
                 ('status', int_t)]
 
 
-class connection_args(ctypes.Structure):
+class ConnectionArgs(ctypes.Structure):
     '''connection arguments'''
     _fields_ = [('chid', chid_t),
                 ('op', long_t)]

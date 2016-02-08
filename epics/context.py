@@ -396,12 +396,12 @@ def _make_callback(func, args):
 
 
 def ca_callback_event(fcn):
-    fcn.ca_callback = _make_callback(fcn, dbr.event_handler_args)
+    fcn.ca_callback = _make_callback(fcn, dbr.EventHandlerArgs)
     return fcn
 
 
 def ca_connection_callback(fcn):
-    fcn.ca_callback = _make_callback(fcn, dbr.connection_args)
+    fcn.ca_callback = _make_callback(fcn, dbr.ConnectionArgs)
     return fcn
 
 
