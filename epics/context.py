@@ -408,7 +408,15 @@ def _make_callback(func, args):
 
 def ca_callback_event(fcn):
     '''Decorator which creates a ctypes callback function for events'''
-    fcn.ca_callback = _make_callback(fcn, dbr.EventHandlerArgs)
+    @functools.wraps(fcn)
+    def wrapped(args):
+        try:
+            return fcn(args)
+        except Exception as ex:
+            logger.error('Exception in libca callback',
+                         exc_info=ex)
+
+    fcn.ca_callback = _make_callback(wrapped, dbr.EventHandlerArgs)
     return fcn
 
 
@@ -443,21 +451,15 @@ def _on_get_event(args):
     # print("           type, count ", args.type, args.count)
     # print("           status ", args.status, dbr.ECA.NORMAL)
 
-    if future.done():
-        print('getevent: hmm, future already done', future, id(future))
-        return
-
-    if future.cancelled():
-        print('future was cancelled', future)
-        return
-
-    if args.status != dbr.ECA.NORMAL:
+    if future.done() or future.cancelled():
+        pass
+    elif args.status != dbr.ECA.NORMAL:
         # TODO look up in appdev manual
         ex = errors.CASeverityException('get', str(args.status))
         loop.call_soon_threadsafe(future.set_exception, ex)
     else:
-        loop.call_soon_threadsafe(future.set_result,
-                                  copy.deepcopy(cast.cast_args(args)))
+        data = copy.deepcopy(cast.cast_args(args))
+        loop.call_soon_threadsafe(future.set_result, data)
 
     # TODO
     # ctypes.pythonapi.Py_DecRef(args.usr)
@@ -470,9 +472,8 @@ def _on_put_event(args, **kwds):
     future.ca_callback_done()
 
     if future.done():
-        print('putevent: hmm, future already done', future, id(future))
+        pass
     elif not future.cancelled():
-        print('finishing put event')
         loop.call_soon_threadsafe(future.set_result, True)
 
     # ctypes.pythonapi.Py_DecRef(args.usr)

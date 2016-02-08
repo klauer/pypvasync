@@ -434,6 +434,7 @@ def promote_type(ftype, use_time=False, use_ctrl=False):
     ftype : int
         the promoted field value.
     """
+    # Demote it back to a native type, if necessary
     ftype = ChType(_native_map.get(ftype, None))
 
     if use_ctrl:
