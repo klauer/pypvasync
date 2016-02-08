@@ -22,7 +22,8 @@ def monitor(value=None, pvname=None, **kwd):
 
 @asyncio.coroutine
 def test_caget():
-    mon_pv = epics.PV(pvname, auto_monitor=True, callback=monitor)
+    mon_pv = epics.PV(pvname, auto_monitor=True)
+    mon_pv.add_callback(monitor)
 
     value = yield from epics.caget(pvname)
     print('value', value)

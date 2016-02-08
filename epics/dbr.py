@@ -11,7 +11,7 @@ import ctypes
 import numpy as np
 from enum import IntEnum
 
-from .utils import PY64_WINDOWS
+from .utils import (PY64_WINDOWS, decode_bytes)
 
 from ctypes import c_short as short_t
 from ctypes import c_ushort as ushort_t
@@ -143,128 +143,163 @@ class TimeStamp(ctypes.Structure):
         return (EPICS2UNIX_EPOCH + self.secs + 1.e-6 * int(1.e-3 * self.nsec))
 
 
-class _stat_sev(ctypes.Structure):
-    _fields_ = [('status', short_t),
-                ('severity', short_t),
-                ]
-
-
-class _stat_sev_units(_stat_sev):
-    _fields_ = [('units', char_t * MAX_UNITS_SIZE),
-                ]
-
-
-class _stat_sev_ts(ctypes.Structure):
+class TimeType(ctypes.Structure):
     _fields_ = [('status', short_t),
                 ('severity', short_t),
                 ('stamp', TimeStamp)
                 ]
 
+    def to_dict(self):
+        return dict(status=self.status,
+                    severity=self.severity,
+                    timestamp=self.stamp.unixtime,
+                    )
 
-class time_string(_stat_sev_ts):
-    "dbr time string"
+
+class time_string(TimeType):
+    dbr_type = ChannelType.TIME_STRING
     _fields_ = [('value', MAX_STRING_SIZE * char_t)]
 
 
-class time_short(_stat_sev_ts):
-    "dbr time short"
+class time_short(TimeType):
+    dbr_type = ChannelType.TIME_SHORT
     _fields_ = [('RISC_pad', short_t),
                 ('value', short_t)]
 
 
-class time_float(_stat_sev_ts):
-    "dbr time float"
+class time_float(TimeType):
+    dbr_type = ChannelType.TIME_FLOAT
     _fields_ = [('value', float_t)]
 
 
-class time_enum(_stat_sev_ts):
-    "dbr time enum"
+class time_enum(TimeType):
+    dbr_type = ChannelType.TIME_ENUM
     _fields_ = [('RISC_pad', short_t),
                 ('value', ushort_t)]
 
 
-class time_char(_stat_sev_ts):
-    "dbr time char"
+class time_char(TimeType):
+    dbr_type = ChannelType.TIME_CHAR
     _fields_ = [('RISC_pad0', short_t),
                 ('RISC_pad1', byte_t),
                 ('value', byte_t)]
 
 
-class time_long(_stat_sev_ts):
-    "dbr time long"
+class time_long(TimeType):
+    dbr_type = ChannelType.TIME_LONG
     _fields_ = [('value', int_t)]
 
 
-class time_double(_stat_sev_ts):
-    "dbr time double"
+class time_double(TimeType):
+    dbr_type = ChannelType.TIME_DOUBLE
     _fields_ = [('RISC_pad', int_t),
                 ('value', double_t)]
 
 
 def _ctrl_lims(type_):
     # DBR types with full control and graphical fields
+    field_names = ['upper_disp_limit',
+                   'lower_disp_limit',
+                   'upper_alarm_limit',
+                   'upper_warning_limit',
+                   'lower_warning_limit',
+                   'lower_alarm_limit',
+                   'upper_ctrl_limit',
+                   'lower_ctrl_limit',
+                   ]
+
     class ctrl_lims(ctypes.Structure):
         _fields_ = [(field, type_)
-                    for field in _ctrl_lims.field_names
+                    for field in field_names
                     ]
+
+        ctrl_fields = field_names
 
     return ctrl_lims
 
-_ctrl_lims.field_names = ['upper_disp_limit',
-                          'lower_disp_limit',
-                          'upper_alarm_limit',
-                          'upper_warning_limit',
-                          'lower_warning_limit',
-                          'lower_alarm_limit',
-                          'upper_ctrl_limit',
-                          'lower_ctrl_limit',
-                          ]
+
+ctrl_lims_short = _ctrl_lims(short_t)
+ctrl_lims_byte = _ctrl_lims(byte_t)
+ctrl_lims_int = _ctrl_lims(int_t)
+ctrl_lims_float = _ctrl_lims(float_t)
+ctrl_lims_double = _ctrl_lims(double_t)
 
 
-class ctrl_enum(_stat_sev):
-    "dbr ctrl enum"
+class ControlType(ctypes.Structure):
+    _fields_ = [('status', short_t),
+                ('severity', short_t),
+                ]
+
+    def to_dict(self):
+        kwds = {}
+        for attr in self.ctrl_fields + ['precision', 'severity']:
+            kwds[attr] = getattr(self, attr, None)
+
+        if hasattr(self, 'units'):
+            kwds['units'] = decode_bytes(self.units)
+
+        return kwds
+
+
+class ControlTypeUnits(ControlType):
+    _fields_ = [('units', char_t * MAX_UNITS_SIZE),
+                ]
+
+
+class ctrl_enum(ControlType):
+    dbr_type = ChannelType.CTRL_ENUM
+
     _fields_ = [('no_str', short_t),
                 ('strs', (char_t * MAX_ENUM_STRING_SIZE) * MAX_ENUM_STATES),
                 ('value', ushort_t)
                 ]
 
+    def to_dict(self):
+        kwds = super().to_dict()
 
-class ctrl_short(_ctrl_lims(short_t), _stat_sev_units):
-    "dbr ctrl short"
+        if self.no_str > 0:
+            kwds['enum_strs'] = tuple(decode_bytes(self.strs[i].value)
+                                      for i in range(self.no_str))
+
+        return kwds
+
+
+class ctrl_short(ctrl_lims_short, ControlTypeUnits):
+    dbr_type = ChannelType.CTRL_SHORT
     _fields_ = [('value', short_t)]
 
 
-class ctrl_char(_ctrl_lims(byte_t), _stat_sev_units):
-    "dbr ctrl long"
+class ctrl_char(ctrl_lims_byte, ControlTypeUnits):
+    dbr_type = ChannelType.CTRL_CHAR
     _fields_ = [('RISC_pad', byte_t),
                 ('value', ubyte_t)
                 ]
 
 
-class ctrl_long(_ctrl_lims(int_t), _stat_sev_units):
-    "dbr ctrl long"
+class ctrl_long(ctrl_lims_int, ControlTypeUnits):
+    dbr_type = ChannelType.CTRL_LONG
     _fields_ = [('value', int_t)]
 
 
-class _ctrl_units(_stat_sev):
+class ControlTypePrecision(ControlType):
     _fields_ = [('precision', short_t),
                 ('RISC_pad', short_t),
                 ('units', char_t * MAX_UNITS_SIZE),
                 ]
 
 
-class ctrl_float(_ctrl_lims(float_t), _ctrl_units):
-    "dbr ctrl float"
+class ctrl_float(ctrl_lims_float, ControlTypePrecision):
+    dbr_type = ChannelType.CTRL_FLOAT
     _fields_ = [('value', float_t)]
 
 
-class ctrl_double(_ctrl_lims(double_t), _ctrl_units):
-    "dbr ctrl double"
+class ctrl_double(ctrl_lims_double, ControlTypePrecision):
+    dbr_type = ChannelType.CTRL_DOUBLE
     _fields_ = [('value', double_t)]
 
 
 class event_handler_args(ctypes.Structure):
-    "event handler arguments"
+    '''event handler arguments'''
     _fields_ = [('usr', ctypes.py_object),
                 ('chid', chid_t),
                 ('type', long_t),
@@ -274,7 +309,7 @@ class event_handler_args(ctypes.Structure):
 
 
 class connection_args(ctypes.Structure):
-    "connection arguments"
+    '''connection arguments'''
     _fields_ = [('chid', chid_t),
                 ('op', long_t)]
 
@@ -366,7 +401,7 @@ _native_map = {
 
 
 def native_type(ftype):
-    "return native field type from TIME or CTRL variant"
+    '''return native field type from TIME or CTRL variant'''
     global _native_map
     return _native_map[ftype]
 
@@ -379,7 +414,7 @@ def promote_type(ftype, use_time=False, use_ctrl=False):
     ftype : int
         the promoted field value.
     """
-    ftype = ChType(_native_map.get(ftype, -1))
+    ftype = ChType(_native_map.get(ftype, None))
 
     if use_ctrl:
         ftype += ChType.CTRL_STRING

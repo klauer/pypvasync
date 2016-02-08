@@ -235,22 +235,11 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
         future.cancel()
         raise
 
-    out = {}
-    for attr in ('precision', 'units', 'severity', 'status',
-                 'upper_disp_limit', 'lower_disp_limit',
-                 'upper_alarm_limit', 'upper_warning_limit',
-                 'lower_warning_limit', 'lower_alarm_limit',
-                 'upper_ctrl_limit', 'lower_ctrl_limit'):
-        if hasattr(ctrl_val, attr):
-            out[attr] = getattr(ctrl_val, attr, None)
-            if attr == 'units':
-                out[attr] = ctrl_val.units.decode('ascii')
+    if not isinstance(ctrl_val, dbr.ControlType):
+        raise RuntimeError('Got back a non-ControlType struct. '
+                           'Type: {}'.format(type(ctrl_val)))
 
-    if (hasattr(ctrl_val, 'strs') and hasattr(ctrl_val, 'no_str') and
-            ctrl_val.no_str > 0):
-        out['enum_strs'] = tuple([ctrl_val.strs[i].value.decode('ascii')
-                                  for i in range(ctrl_val.no_str)])
-    return out
+    return ctrl_val.to_dict()
 
 
 @ca.withConnectedCHID
@@ -269,19 +258,16 @@ def get_timevars(chid, timeout=5.0, warn=True):
     PySEVCHK('get_timevars', ret)
 
     try:
-        value = yield from asyncio.wait_for(future, timeout=timeout)
+        time_val, nvals = yield from asyncio.wait_for(future, timeout=timeout)
     except asyncio.TimeoutError:
         future.cancel()
         raise
 
-    if not isinstance(value, dbr._stat_sev_ts):
-        raise RuntimeError('Got back a non-stat-severity-timestamp struct. '
-                           'Type: {}'.format(type(value)))
+    if not isinstance(time_val, dbr.TimeType):
+        raise RuntimeError('Got back a non-TimeType struct. '
+                           'Type: {}'.format(type(time_val)))
 
-    return dict(status=value.status,
-                severity=value.severity,
-                timestamp=value.stamp.unixtime,
-                )
+    return time_val.to_dict()
 
 
 @asyncio.coroutine

@@ -7,15 +7,7 @@ from .dbr import native_type
 from .ca import (element_count, field_type, withConnectedCHID)
 from .errors import ChannelAccessException
 from .dbr import ChannelType
-
-
-def decode_bytes(bytes_, encoding='latin-1'):
-    try:
-        bytes_ = bytes_[:bytes_.index(0)]
-    except ValueError:
-        pass
-
-    return bytes_.decode(encoding)
+from .utils import decode_bytes
 
 
 def scan_string(data, count):
@@ -159,39 +151,15 @@ def get_put_info(chid, value, encoding='latin-1'):
 def cast_monitor_args(args):
     """Event Handler for monitor events: not intended for use"""
 
-    value = cast_args(args)
+    pvalue, nvalues = cast_args(args)
     kwds = {'ftype': args.type, 'count': args.count, 'chid': args.chid,
             'status': args.status, 'handler_id': args.usr}
 
-    # add kwds arguments for CTRL and TIME variants
-    # this is in a try/except clause to avoid problems
-    # caused by uninitialized waveform arrays
-    if args.type >= ChannelType.CTRL_STRING:
-        try:
-            tmpv = value[0]
-            ctrl_names = dbr._ctrl_lims.field_names
-            for attr in ctrl_names + ['precision', 'units', 'severity']:
-                if hasattr(tmpv, attr):
-                    kwds[attr] = getattr(tmpv, attr)
-                    if attr == 'units':
-                        kwds[attr] = decode_bytes(getattr(tmpv, attr, ''))
+    if pvalue is not None:
+        # add kwds arguments for CTRL and TIME variants
+        kwds.update(pvalue.to_dict())
 
-            if (hasattr(tmpv, 'strs') and hasattr(tmpv, 'no_str') and
-                    tmpv.no_str > 0):
-                kwds['enum_strs'] = tuple([tmpv.strs[i].value for
-                                           i in range(tmpv.no_str)])
-        except IndexError:
-            pass
-    elif args.type >= ChannelType.TIME_STRING:
-        try:
-            tmpv = value[0]
-            kwds['status'] = tmpv.status
-            kwds['severity'] = tmpv.severity
-            kwds['timestamp'] = tmpv.stamp.unixtime
-        except IndexError:
-            pass
-
-    value = unpack(args.chid, value[1], count=args.count, ftype=args.type)
+    value = unpack(args.chid, nvalues, count=args.count, ftype=args.type)
     kwds['value'] = value
     return kwds
 
