@@ -363,20 +363,18 @@ class PV(object):
         return cval
 
     @asyncio.coroutine
-    def get_ctrlvars(self, timeout=5, warn=True):
+    def get_ctrlvars(self, timeout=5):
         "get control values for variable"
         yield from self.wait_for_connection(timeout=timeout)
-        kwds = yield from coroutines.get_ctrlvars(self.chid, timeout=timeout,
-                                                  warn=warn)
+        kwds = yield from coroutines.get_ctrlvars(self.chid, timeout=timeout)
         self._args.update(kwds)
         return kwds
 
     @asyncio.coroutine
-    def get_timevars(self, timeout=5, warn=True):
+    def get_timevars(self, timeout=5):
         "get time values for variable"
         yield from self.wait_for_connection()
-        kwds = yield from coroutines.get_timevars(self.chid, timeout=timeout,
-                                                  warn=warn)
+        kwds = yield from coroutines.get_timevars(self.chid, timeout=timeout)
         self._args.update(kwds)
         return kwds
 

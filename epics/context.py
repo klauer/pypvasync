@@ -288,14 +288,14 @@ class CAContextHandler:
     def _poll_thread(self):
         '''Poll context ctx in an executor thread'''
         try:
+            logger.debug('Event poll thread starting', self)
             while self._running:
                 ca.pend_event(1.e-5)
                 ca.pend_io(1.0)
         finally:
-            print('context detach')
             ca.flush_io()
             ca.detach_context()
-            print('done')
+            logger.debug('%s event poll thread exiting', self)
 
     def start(self):
         loop = self._loop

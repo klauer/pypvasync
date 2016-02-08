@@ -204,7 +204,7 @@ def put(chid, value, timeout=30, callback=None, callback_data=None):
 
 
 @withConnectedCHID
-def get_ctrlvars(chid, timeout=5.0, warn=True):
+def get_ctrlvars(chid, timeout=5.0):
     """return the CTRL fields for a Channel.
 
     Depending on the native type, the keys may include
@@ -244,7 +244,7 @@ def get_ctrlvars(chid, timeout=5.0, warn=True):
 
 @ca.withConnectedCHID
 @asyncio.coroutine
-def get_timevars(chid, timeout=5.0, warn=True):
+def get_timevars(chid, timeout=5.0):
     """returns a dictionary of TIME fields for a Channel.
     This will contain keys of  *status*, *severity*, and *timestamp*.
     """
