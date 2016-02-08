@@ -347,7 +347,6 @@ def caget(pvname, *, as_string=False, count=None, as_numpy=True,
     val = yield from thispv.get(count=count, timeout=timeout,
                                 use_monitor=use_monitor,
                                 as_string=as_string, as_numpy=as_numpy)
-    # poll()
     return val
 
 

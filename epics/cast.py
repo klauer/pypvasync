@@ -11,8 +11,7 @@ from .utils import decode_bytes
 
 
 def scan_string(data, count):
-    """ Scan a string, or an array of strings as a list, depending on
-    content """
+    """Scan a string, or an array of strings as a list, depending on content"""
     count = min(count, len(data))
 
     if count == 1:
@@ -36,9 +35,7 @@ def to_numpy_array(data, count, ntype):
 
 def unpack_simple(data, count, ntype, use_numpy):
     "simple, native data type"
-    if data is None:
-        return None
-    elif count == 1 and ntype != ChannelType.STRING:
+    if count == 1 and ntype != ChannelType.STRING:
         return data[0]
     elif ntype == ChannelType.STRING:
         return scan_string(data, count)
