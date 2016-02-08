@@ -162,9 +162,6 @@ class MonitorCallback(ChannelCallbackBase):
                    (self.native_type == other.ftype))
         return has_req_mask and type_ok
 
-    def callbacks_emptied(self):
-        print('all callbacks cleared, remove ca subscription')
-
 
 def _in_context(func):
     '''Ensure function is executed in the correct CA context'''
@@ -294,7 +291,6 @@ class CAContextHandler:
             while self._running:
                 ca.pend_event(1.e-5)
                 ca.pend_io(1.0)
-                time.sleep(0.01)
         finally:
             print('context detach')
             ca.flush_io()
