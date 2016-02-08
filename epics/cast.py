@@ -145,19 +145,18 @@ def get_put_info(chid, value, encoding='latin-1'):
     return ftype, count, data
 
 
-def cast_monitor_args(args):
-    """Event Handler for monitor events: not intended for use"""
+def cast_monitor_args(event_args):
+    """make a dictionary from monitor callback arguments"""
+    promoted_val, nvalues = cast_args(event_args)
+    value = unpack(event_args.chid, nvalues, count=event_args.count,
+                   ftype=event_args.type)
 
-    pvalue, nvalues = cast_args(args)
-    kwds = {'ftype': args.type, 'count': args.count, 'chid': args.chid,
-            'status': args.status, 'handler_id': args.usr}
-
-    if pvalue is not None:
-        # add kwds arguments for CTRL and TIME variants
-        kwds.update(pvalue.to_dict())
-
-    value = unpack(args.chid, nvalues, count=args.count, ftype=args.type)
+    kwds = event_args.to_dict()
     kwds['value'] = value
+
+    if promoted_val is not None:
+        # add kwds arguments for CTRL and TIME variants
+        kwds.update(promoted_val.to_dict())
     return kwds
 
 

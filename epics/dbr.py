@@ -316,6 +316,13 @@ class EventHandlerArgs(ctypes.Structure):
                 ('raw_dbr', void_p),
                 ('status', int_t)]
 
+    def to_dict(self):
+        return dict(ftype=self.type,
+                    count=self.count,
+                    chid=self.chid,
+                    status=self.status,
+                    handler_id=self.usr)
+
 
 class ConnectionArgs(ctypes.Structure):
     '''connection arguments'''
