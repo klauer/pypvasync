@@ -389,7 +389,10 @@ _cm = CAContexts()
 
 
 def _make_callback(func, args):
-    """ make callback function"""
+    """Make a ctypes callback function
+
+    Works a bit differently on Windows Python x64
+    """
     if utils.PY64_WINDOWS:
         # note that ctypes.POINTER is needed for 64-bit Python on Windows
         args = ctypes.POINTER(args)
@@ -404,11 +407,13 @@ def _make_callback(func, args):
 
 
 def ca_callback_event(fcn):
+    '''Decorator which creates a ctypes callback function for events'''
     fcn.ca_callback = _make_callback(fcn, dbr.EventHandlerArgs)
     return fcn
 
 
 def ca_connection_callback(fcn):
+    '''Decorator which creates a ctypes callback function for connections'''
     fcn.ca_callback = _make_callback(fcn, dbr.ConnectionArgs)
     return fcn
 
