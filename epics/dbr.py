@@ -196,7 +196,7 @@ class TimeDouble(TimeType):
                 ('value', double_t)]
 
 
-def _ctrl_lims(type_):
+def _create_ctrl_lims(type_):
     # DBR types with full control and graphical fields
     field_names = ['upper_disp_limit',
                    'lower_disp_limit',
@@ -224,11 +224,11 @@ def _ctrl_lims(type_):
     return ctrl_lims
 
 
-ctrl_lims_short = _ctrl_lims(short_t)
-ctrl_lims_byte = _ctrl_lims(byte_t)
-ctrl_lims_int = _ctrl_lims(int_t)
-ctrl_lims_float = _ctrl_lims(float_t)
-ctrl_lims_double = _ctrl_lims(double_t)
+CtrlLimitsShort = _create_ctrl_lims(short_t)
+CtrlLimitsByte = _create_ctrl_lims(byte_t)
+CtrlLimitsInt = _create_ctrl_lims(int_t)
+CtrlLimitsFloat = _create_ctrl_lims(float_t)
+CtrlLimitsDouble = _create_ctrl_lims(double_t)
 
 
 class ControlTypeBase(ctypes.Structure):
@@ -263,7 +263,7 @@ class ControlTypePrecision(ControlTypeBase):
         return kwds
 
 
-class ctrl_enum(ControlTypeBase):
+class CtrlEnum(ControlTypeBase):
     dbr_type = ChannelType.CTRL_ENUM
 
     _fields_ = [('no_str', short_t),
@@ -280,29 +280,29 @@ class ctrl_enum(ControlTypeBase):
         return kwds
 
 
-class ctrl_short(ctrl_lims_short, ControlTypeUnits):
+class CtrlShort(CtrlLimitsShort, ControlTypeUnits):
     dbr_type = ChannelType.CTRL_SHORT
     _fields_ = [('value', short_t)]
 
 
-class ctrl_char(ctrl_lims_byte, ControlTypeUnits):
+class CtrlChar(CtrlLimitsByte, ControlTypeUnits):
     dbr_type = ChannelType.CTRL_CHAR
     _fields_ = [('RISC_pad', byte_t),
                 ('value', ubyte_t)
                 ]
 
 
-class ctrl_long(ctrl_lims_int, ControlTypeUnits):
+class CtrlLong(CtrlLimitsInt, ControlTypeUnits):
     dbr_type = ChannelType.CTRL_LONG
     _fields_ = [('value', int_t)]
 
 
-class ctrl_float(ctrl_lims_float, ControlTypePrecision):
+class CtrlFloat(CtrlLimitsFloat, ControlTypePrecision):
     dbr_type = ChannelType.CTRL_FLOAT
     _fields_ = [('value', float_t)]
 
 
-class ctrl_double(ctrl_lims_double, ControlTypePrecision):
+class CtrlDouble(CtrlLimitsDouble, ControlTypePrecision):
     dbr_type = ChannelType.CTRL_DOUBLE
     _fields_ = [('value', double_t)]
 
@@ -362,13 +362,13 @@ _ftype_to_ctype = {
 
     # Note: there is no ctrl string in the C definition
     ChType.CTRL_STRING: TimeString,
-    ChType.CTRL_SHORT: ctrl_short,
-    ChType.CTRL_INT: ctrl_short,
-    ChType.CTRL_FLOAT: ctrl_float,
-    ChType.CTRL_ENUM: ctrl_enum,
-    ChType.CTRL_CHAR: ctrl_char,
-    ChType.CTRL_LONG: ctrl_long,
-    ChType.CTRL_DOUBLE: ctrl_double
+    ChType.CTRL_SHORT: CtrlShort,
+    ChType.CTRL_INT: CtrlShort,
+    ChType.CTRL_FLOAT: CtrlFloat,
+    ChType.CTRL_ENUM: CtrlEnum,
+    ChType.CTRL_CHAR: CtrlChar,
+    ChType.CTRL_LONG: CtrlLong,
+    ChType.CTRL_DOUBLE: CtrlDouble
 }
 
 
