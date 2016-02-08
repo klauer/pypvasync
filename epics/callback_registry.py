@@ -93,7 +93,8 @@ class ChannelCallbackRegistry:
     def __init__(self, context, sig_classes):
         self.context = context
         self.sig_classes = sig_classes
-        self.handlers = dict()
+        self.handlers_by_chid = {}
+        self.handlers = {}
         self.cbid_owner = {}
         self._cbid = 0
         self._handler_id = 0
@@ -118,11 +119,11 @@ class ChannelCallbackRegistry:
         cbid = self._cbid
         chid = ca.channel_id_to_int(chid)
 
-        if chid not in self.handlers:
-            self.handlers[chid] = {sig: []
-                                   for sig in self.sig_classes.keys()}
+        if chid not in self.handlers_by_chid:
+            self.handlers_by_chid[chid] = {sig: []
+                                           for sig in self.sig_classes.keys()}
 
-        sig_handlers = self.handlers[chid][sig]
+        sig_handlers = self.handlers_by_chid[chid][sig]
 
         handler_class = self.sig_classes[sig]
         new_handler = handler_class(self, chid, **kwargs)
@@ -142,6 +143,7 @@ class ChannelCallbackRegistry:
             self._handler_id += 1
             new_handler.handler_id = self._handler_id
 
+            self.handlers[new_handler.handler_id] = new_handler
             sig_handlers.append(new_handler)
             new_handler.create()
 
@@ -160,35 +162,35 @@ class ChannelCallbackRegistry:
 
         if not owner.callbacks:
             chid, sig = owner.chid, owner.sig
-            self.handlers[chid][sig].remove(owner)
+            self.handlers_by_chid[chid][sig].remove(owner)
 
             # TODO here is where chid can be checked to see if it's in use
             # anywhere and can potentially be cleared
-            # self.context.clear_channel(chid)
+            subs = list(self.subscriptions_by_chid(chid))
+            if not subs:
+                print('clearing channel', chid)
+                self.context.clear_channel(chid)
 
     @_locked
-    def process_by_cbid(self, cbid, **kwargs):
-        owner = self.cbid_owner[cbid]
-        return owner.process(**kwargs)
+    def process(self, sig, chid, *, cbid=None, handler_id=None, **kwargs):
+        try:
+            if sig == 'connection':
+                handler = self.handlers_by_chid[chid]['connection'][0]
+            elif handler_id is not None:
+                handler = self.handlers[handler_id]
+            elif cbid is not None:
+                handler = self.cbid_owner[cbid]
+            else:
+                logger.debug('Handler information not present?')
+                return
+        except (KeyError, IndexError) as ex:
+            logger.debug('Cannot determine callback event handler',
+                         exc_info=ex)
+            return
 
-    @_locked
-    def process_by_signal(self, sig, chid, **kwargs):
-        handlers = self.handlers[chid][sig]
-        if len(handlers) > 1:
-            raise RuntimeError('Process should be by callback id for this')
-
-        # TODO make this user handler ids
-        handler = handlers[0]
         return handler.process(**kwargs)
 
-    @_locked
-    def process(self, sig, chid, *, cbid=None, **kwargs):
-        if cbid is not None:
-            return self.process_by_cbid(cbid, **kwargs)
-        else:
-            return self.process_by_signal(sig, chid, **kwargs)
-
     def subscriptions_by_chid(self, chid):
-        for sig, handlers in self.handlers[chid].items():
+        for sig, handlers in self.handlers_by_chid[chid].items():
             for handler in handlers:
                 yield sig, handler

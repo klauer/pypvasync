@@ -153,6 +153,7 @@ def cast_monitor_args(event_args):
 
     kwds = event_args.to_dict()
     kwds['value'] = value
+    kwds['handler_id'] = event_args.usr
 
     if promoted_val is not None:
         # add kwds arguments for CTRL and TIME variants

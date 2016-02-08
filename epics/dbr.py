@@ -321,7 +321,7 @@ class EventHandlerArgs(ctypes.Structure):
                     count=self.count,
                     chid=self.chid,
                     status=self.status,
-                    handler_id=self.usr)
+                    )
 
 
 class ConnectionArgs(ctypes.Structure):
