@@ -2,9 +2,8 @@ import logging
 
 import asyncio
 import epics
-import time
 import threading
-import atexit
+from epics.coroutines import caget, caput
 
 print(epics.__file__)
 
@@ -25,11 +24,11 @@ def test_caget():
     mon_pv = epics.PV(pvname, auto_monitor=True)
     mon_pv.add_callback(monitor)
 
-    value = yield from epics.caget(pvname)
+    value = yield from caget(pvname)
     print('value', value)
 
     try:
-        value = yield from epics.caget(write_pvname, timeout=1e-9)
+        value = yield from caget(write_pvname, timeout=1e-9)
         print('value was really fast', value)
     except Exception as ex:
         print('[expected failure] caget:', pvname, ex.__class__.__name__, ex)
@@ -37,17 +36,17 @@ def test_caget():
     print()
     print('-----------')
     print('move to 1.2')
-    yield from epics.caput(write_pvname, 1.2, timeout=5.0)
+    yield from caput(write_pvname, 1.2, timeout=5.0)
     yield from asyncio.sleep(0.1)
-    value = yield from epics.caget(pvname)
+    value = yield from caget(pvname)
     print('read back', value)
 
     print()
     print('-----------')
     print('move to 0.9')
-    yield from epics.caput(write_pvname, 0.9, timeout=5.0)
+    yield from caput(write_pvname, 0.9, timeout=5.0)
     yield from asyncio.sleep(0.1)
-    value = yield from epics.caget(pvname)
+    value = yield from caget(pvname)
     print('read back', value)
 
     pv = epics.PV(pvname)

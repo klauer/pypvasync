@@ -2,7 +2,7 @@ import asyncio
 import functools
 import logging
 
-import epics
+from epics import coroutines
 
 from . import pvnames
 
@@ -19,12 +19,12 @@ def no_simulator_updates(coroutine):
         try:
             logger.debug('Pausing updating of simulator PVs')
             print('* Pausing updating of simulator PVs')
-            yield from epics.caput(pvnames.pause_pv, 1)
+            yield from coroutines.caput(pvnames.pause_pv, 1)
             yield from coroutine(self, *args, **kwargs)
         finally:
             logger.debug('Resuming updating of simulator PVs')
             print('* Resuming updating of simulator PVs')
-            yield from epics.caput(pvnames.pause_pv, 0)
+            yield from coroutines.caput(pvnames.pause_pv, 0)
 
     return inner
 
