@@ -123,7 +123,7 @@ def get(chid, ftype=None, count=None, timeout=None, as_string=False,
     """
 
     if ftype is None:
-        ftype = field_type(chid)
+        ftype = ca.field_type(chid)
     if ftype in (None, -1):
         return None
     if count is None:

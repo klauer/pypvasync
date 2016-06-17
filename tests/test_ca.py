@@ -24,22 +24,19 @@ def _ca_connect(chid,timeout=5.0):
         n += 1
     return conn, time.time()-t0, n
 
-def write(msg):
-    sys.stdout.write('%s\n'% msg)
-    sys.stdout.flush()
 
-CONN_DAT ={}
-CHANGE_DAT = {}
+_connection_dict = {}
+_change_dict = {}
 
-def onConnect(pvname=None, conn=None, chid=None,  **kws):
-    write('  /// Connection status changed:  %s  %s' % (pvname, repr(kws)))
-    global CONN_DAT
-    CONN_DAT[pvname] = conn
+
+# API: conn kwarg is now connected
+def onConnect(pvname=None, connected=None, chid=None,  **kws):
+    print('  /// Connection status changed:  %s  %s' % (pvname, repr(kws)))
+    _connection_dict[pvname] = connected
 
 def onChanges(pvname=None, value=None, **kws):
-    write( '/// New Value: %s  value=%s, kw=%s' %( pvname, str(value), repr(kws)))
-    global CHANGE_DAT
-    CHANGE_DAT[pvname] = value
+    print( '/// New Value: %s  value=%s, kw=%s' %( pvname, str(value), repr(kws)))
+    _change_dict[pvname] = value
 
 @pytest.fixture
 def ctx():
@@ -52,7 +49,7 @@ def testA_CreateChid(ctx):
 
 
 def testA_GetNonExistentPV(ctx):
-    write('Simple Test: get on a non-existent PV')
+    print('Simple Test: get on a non-existent PV')
     chid = ctx.create_channel('Definitely-Not-A-Real-PV')
     pytest.raises(ca.ChannelAccessException, ca.get, chid)
 
@@ -60,7 +57,7 @@ def testA_GetNonExistentPV(ctx):
 @async_test
 @asyncio.coroutine
 def testA_CreateChid_CheckTypeCount(ctx):
-    write('Simple Test: create chid, check count, type, host, and access')
+    print('Simple Test: create chid, check count, type, host, and access')
     chid = ctx.create_channel(pvnames.double_pv)
     ret = yield from ctx.connect_channel(chid)
 
@@ -79,17 +76,21 @@ def testA_CreateChid_CheckTypeCount(ctx):
 @async_test
 @asyncio.coroutine
 def testA_CreateChidWithConn(ctx):
-    write('Simple Test: create chid with conn callback')
+    print('Simple Test: create chid with conn callback')
     chid = ctx.create_channel(pvnames.int_pv, callback=onConnect)
+    print('created')
+    ret = yield from ctx.connect_channel(chid)
+    print('connected')
     val = yield from coroutines.get(chid)
+    print('got')
 
-    global CONN_DAT
-    conn = CONN_DAT.get(pvnames.int_pv, None)
+    conn = _connection_dict.get(pvnames.int_pv, None)
+    print('conn dat is', _connection_dict)
     assert conn
 
 
 def test_dbrName():
-    write( 'DBR Type Check')
+    print( 'DBR Type Check')
     assert dbr.Name(dbr.STRING) == 'STRING'
     assert dbr.Name(dbr.FLOAT) ==  'FLOAT'
     assert dbr.Name(dbr.ENUM) == 'ENUM'
@@ -106,8 +107,8 @@ def test_dbrName():
 def test_Connect1():
     chid = ca.create_channel(pvnames.double_pv)
     conn,dt,n = _ca_connect(chid, timeout=2)
-    write( 'CA Connection Test1: connect to existing PV')
-    write( ' connected in %.4f sec' % (dt))
+    print( 'CA Connection Test1: connect to existing PV')
+    print( ' connected in %.4f sec' % (dt))
     assert conn
 
 
@@ -115,7 +116,7 @@ def test_Connected():
     pvn = pvnames.double_pv
     chid = ca.create_channel(pvn,connect=True)
     isconn = ca.isConnected(chid)
-    write( 'CA test Connected (%s) = %s' % (pvn,isconn))
+    print( 'CA test Connected (%s) = %s' % (pvn,isconn))
     assert isconn
     state= ca.state(chid)
     assert state == ca.dbr.CS_CONN
@@ -127,7 +128,7 @@ def test_DoubleVal():
     pvn = pvnames.double_pv
     chid = ca.create_channel(pvn,connect=True)
     cdict  = ca.get_ctrlvars(chid)
-    write( 'CA testing CTRL Values for a Double (%s)'   % (pvn))
+    print( 'CA testing CTRL Values for a Double (%s)'   % (pvn))
     assert 'units' in cdict
     assert 'precision' in cdict
     assert 'severity' in cdict
@@ -152,7 +153,7 @@ def test_DoubleVal():
 
 
 def test_UnConnected():
-    write( 'CA Connection Test1: connect to non-existing PV (2sec timeout)')
+    print( 'CA Connection Test1: connect to non-existing PV (2sec timeout)')
     chid = ca.create_channel('impossible_pvname_certain_to_fail')
     conn,dt,n = _ca_connect(chid, timeout=2)
     assert not conn
@@ -173,7 +174,7 @@ def test_putwait():
 def test_promote_type():
     pvn = pvnames.double_pv
     chid = ca.create_channel(pvn,connect=True)
-    write( 'CA promote type (%s)' % (pvn))
+    print( 'CA promote type (%s)' % (pvn))
     f_t  = ca.promote_type(chid,use_time=True)
     f_c  = ca.promote_type(chid,use_ctrl=True)
     assert f_t == ca.dbr.TIME_DOUBLE
@@ -183,7 +184,7 @@ def test_promote_type():
 def test_ProcPut():
     pvn  = pvnames.enum_pv
     chid = ca.create_channel(pvn, connect=True)
-    write( 'CA test put to PROC Field (%s)' % (pvn))
+    print( 'CA test put to PROC Field (%s)' % (pvn))
     for input in (1, '1', 2, '2', 0, '0', 50, 1):
         ret = None
         try:
@@ -199,12 +200,12 @@ def test_subscription_double():
     cb, uarg, eventID = ca.create_subscription(chid, callback=onChanges)
 
     start_time = time.time()
-    global CHANGE_DAT
+    global _change_dict
     while time.time()-start_time < 5.0:
         time.sleep(0.01)
-        if CHANGE_DAT.get(pvn, None) is not None:
+        if _change_dict.get(pvn, None) is not None:
             break
-    val = CHANGE_DAT.get(pvn, None)
+    val = _change_dict.get(pvn, None)
     ca.clear_subscription(eventID)
     assert val is not None
 
@@ -217,7 +218,7 @@ def test_subscription_custom():
     change_count = 0
 
     def my_callback(pvname=None, value=None, **kws):
-        write( ' Custom Callback  %s  value=%s' %(pvname, str(value)))
+        print( ' Custom Callback  %s  value=%s' %(pvname, str(value)))
         global change_count
         change_count = change_count + 1
 
@@ -235,18 +236,18 @@ def test_subscription_custom():
 def test_subscription_str():
 
     pvn = pvnames.updating_str1
-    write(" Subscription on string: %s " % pvn)
+    print(" Subscription on string: %s " % pvn)
     chid = ca.create_channel(pvn,connect=True)
     cb, uarg, eventID = ca.create_subscription(chid, callback=onChanges)
 
     start_time = time.time()
-    global CHANGE_DAT
+    global _change_dict
     while time.time()-start_time < 3.0:
         time.sleep(0.01)
         ca.put(chid, "%.1f" % (time.time()-start_time) )
-        if CHANGE_DAT.get(pvn, None) is not None:
+        if _change_dict.get(pvn, None) is not None:
             break
-    val = CHANGE_DAT.get(pvn, None)
+    val = _change_dict.get(pvn, None)
     # ca.clear_subscription(eventID)
     assert val is not None
     time.sleep(0.2)
@@ -263,14 +264,14 @@ def _array_callback(arrayname, array_type, length, element_type):
         chid = ca.create_channel(arrayname,connect=True)
         cb, uarg, eventID = ca.create_subscription(chid, use_time=form=='time', use_ctrl=form=='ctrl', callback=onChanges)
 
-        CHANGE_DAT.pop(arrayname, None)
+        _change_dict.pop(arrayname, None)
         timeout=0
         # wait up to 6 seconds, if no callback probably due to simulator.py
         # not running...
-        while timeout<120 and not arrayname in CHANGE_DAT:
+        while timeout<120 and not arrayname in _change_dict:
             time.sleep(0.05)
             timeout = timeout+1
-        val = CHANGE_DAT.get(arrayname, None)
+        val = _change_dict.get(arrayname, None)
         ca.clear_subscription(eventID)
         assert val is not None
         assert type(val) == array_type
@@ -305,7 +306,7 @@ def test_subscription_char_array():
 
 
 def test_Values():
-    write( 'CA test Values (compare 5 values with caget)')
+    print( 'CA test Values (compare 5 values with caget)')
     os.system('rm ./caget.tst')
     vals = {}
     with no_simulator_updates():
@@ -327,7 +328,7 @@ def test_Values():
 
 
 def test_type_converions_1():
-    write("CA type conversions scalars")
+    print("CA type conversions scalars")
     pvlist = (pvnames.str_pv, pvnames.int_pv, pvnames.float_pv,
               pvnames.enum_pv,  pvnames.long_pv,  pvnames.double_pv2)
     chids = []
@@ -345,7 +346,7 @@ def test_type_converions_1():
 
         for promotion in ('ctrl', 'time'):
             for chid, pvname in chids:
-                write('=== %s  chid=%s as %s' % (ca.name(chid), repr(chid),
+                print('=== %s  chid=%s as %s' % (ca.name(chid), repr(chid),
                                                  promotion))
                 time.sleep(0.01)
                 if promotion == 'ctrl':
@@ -361,7 +362,7 @@ def test_type_converions_1():
 
 
 def test_type_converions_2():
-    write("CA type conversions arrays")
+    print("CA type conversions arrays")
     pvlist = (pvnames.char_arr_pv,
               pvnames.long_arr_pv,
               pvnames.double_arr_pv)
@@ -379,7 +380,7 @@ def test_type_converions_2():
             values[name] = ca.get(chid)
         for promotion in ('ctrl', 'time'):
             for chid, pvname in chids:
-                write('=== %s  chid=%s as %s' % (ca.name(chid), repr(chid),
+                print('=== %s  chid=%s as %s' % (ca.name(chid), repr(chid),
                                                  promotion))
                 time.sleep(0.01)
                 if promotion == 'ctrl':
@@ -394,7 +395,7 @@ def test_type_converions_2():
 
 
 def test_Array0():
-    write('Array Test: get double array as numpy array, ctypes Array, and list')
+    print('Array Test: get double array as numpy array, ctypes Array, and list')
     chid = ca.create_channel(pvnames.double_arrays[0])
     aval = ca.get(chid)
     cval = ca.get(chid, as_numpy=False)
@@ -411,7 +412,7 @@ def test_Array0():
 
 
 def test_xArray1():
-    write('Array Test: get(wait=False) / get_complete()')
+    print('Array Test: get(wait=False) / get_complete()')
     chid = ca.create_channel(pvnames.double_arrays[0])
     val0 = ca.get(chid)
     aval = ca.get(chid, wait=False)
@@ -421,13 +422,13 @@ def test_xArray1():
 
 
 def test_xArray2():
-    write('Array Test: get fewer than max vals using ca.get(count=0)')
+    print('Array Test: get fewer than max vals using ca.get(count=0)')
     chid = ca.create_channel(pvnames.double_arrays[0])
     maxpts = ca.element_count(chid)
     npts = int(max(2, maxpts/2.3 - 1))
-    write('max points is %s' % (maxpts, ))
+    print('max points is %s' % (maxpts, ))
     dat = numpy.random.normal(size=npts)
-    write('setting array to a length of npts=%s' % (npts, ))
+    print('setting array to a length of npts=%s' % (npts, ))
     ca.put(chid, dat)
     out1 = ca.get(chid)
     assert isinstance(out1, numpy.ndarray)
@@ -438,7 +439,7 @@ def test_xArray2():
 
 
 def test_xArray3():
-    write('Array Test: get char array as string')
+    print('Array Test: get char array as string')
     chid = ca.create_channel(pvnames.char_arrays[0])
     val = ca.get(chid)
     assert isinstance(val, numpy.ndarray)

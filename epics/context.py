@@ -208,21 +208,22 @@ class CAContextHandler:
         except KeyError:
             pass
 
-        chid = dbr.chid_t()
-        ret = ca.libca.ca_create_channel(pvname.encode('ascii'),
-                                         _on_connection_event.ca_callback,
-                                         0, 0, ctypes.byref(chid))
+        with self._sub_lock:
+            chid = dbr.chid_t()
+            ret = ca.libca.ca_create_channel(pvname.encode('ascii'),
+                                             _on_connection_event.ca_callback,
+                                             0, 0, ctypes.byref(chid))
 
-        ca.PySEVCHK('create_channel', ret)
+            ca.PySEVCHK('create_channel', ret)
 
-        chid = ca.channel_id_to_int(chid)
+            chid = ca.channel_id_to_int(chid)
 
-        self.channel_to_pv[chid] = pvname
-        self.pv_to_channel[pvname] = chid
+            self.channel_to_pv[chid] = pvname
+            self.pv_to_channel[pvname] = chid
 
-        if callback is not None:
-            self.subscribe(sig='connection', chid=chid, func=callback,
-                           oneshot=True)
+            if callback is not None:
+                self.subscribe(sig='connection', chid=chid, func=callback,
+                               oneshot=True)
         return chid
 
     def clear_channel(self, pvname):
