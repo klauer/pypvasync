@@ -202,7 +202,7 @@ class CAContextHandler:
     def add_event(self, type_, info):
         self._event_queue.put((type_, info), block=False)
 
-    def create_channel(self, pvname):
+    def create_channel(self, pvname, *, callback=None):
         try:
             return self.pv_to_channel[pvname]
         except KeyError:
@@ -216,8 +216,13 @@ class CAContextHandler:
         ca.PySEVCHK('create_channel', ret)
 
         chid = ca.channel_id_to_int(chid)
+
         self.channel_to_pv[chid] = pvname
         self.pv_to_channel[pvname] = chid
+
+        if callback is not None:
+            self.subscribe(sig='connection', chid=chid, func=callback,
+                           oneshot=True)
         return chid
 
     def clear_channel(self, pvname):

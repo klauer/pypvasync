@@ -32,8 +32,8 @@ def no_simulator_updates(coroutine):
 def async_test(coroutine):
     '''Blocks to test a coroutine's functionality'''
     @functools.wraps(coroutine)
-    def wrapped(self, *args, **kwargs):
-        future = coroutine(self, *args, **kwargs)
+    def wrapped(*args, **kwargs):
+        future = coroutine(*args, **kwargs)
         loop.run_until_complete(future)
 
     return wrapped
