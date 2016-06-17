@@ -130,9 +130,29 @@ def initialize_libca():
     libca.ca_version.restype = ctypes.c_char_p
     libca.ca_host_name.restype = ctypes.c_char_p
     libca.ca_name.restype = ctypes.c_char_p
-    # libca.ca_name.argtypes    = [dbr.chid_t]
-    # libca.ca_state.argtypes   = [dbr.chid_t]
-    # libca.ca_clear_channel.argtypes = [dbr.chid_t]
+    libca.ca_attach_context.argtypes = [ctypes.c_void_p]
+
+    # ca_create_subscription(chtype TYPE, unsigned long COUNT, chid CHID,
+    #                        unsigned long MASK, pCallBack USERFUNC, void
+    #                        *USERARG, evid *PEVID );
+
+    libca.ca_create_subscription.argtypes = [ctypes.c_long, ctypes.c_ulong,
+                                             dbr.chid_t, ctypes.c_ulong,
+                                             ctypes.c_void_p, ctypes.py_object,
+                                             ctypes.c_void_p,
+                                             ]
+
+    # int ca_create_channel(const char *PROCESS_VARIABLE_NAME, caCh *USERFUNC,
+    #                       void *PUSER, capri priority, chid *PCHID)
+
+    libca.ca_create_channel.argtypes = [ctypes.c_char_p, ctypes.c_void_p,
+                                        ctypes.c_long, ctypes.c_long,
+                                        ctypes.POINTER(ctypes.c_long),
+                                        ]
+
+    libca.ca_name.argtypes    = [dbr.chid_t]
+    libca.ca_state.argtypes   = [dbr.chid_t]
+    libca.ca_clear_channel.argtypes = [dbr.chid_t]
 
     libca.ca_message.restype = ctypes.c_char_p
 

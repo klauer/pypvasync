@@ -359,8 +359,5 @@ class CAThread(Thread):
     """
 
     def run(self):
-        if sys.platform == 'darwin':
-            context_create()
-        else:
-            use_initial_context()
+        use_initial_context()
         super().run()
