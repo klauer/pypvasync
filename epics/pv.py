@@ -20,6 +20,7 @@ from .context import get_current_context
 from . import coroutines
 from .dbr import ChannelType
 from .utils import format_time
+from .sync import blocking_wrapper
 
 _PVcache_ = {}
 
@@ -64,8 +65,8 @@ class PV(object):
       >>> @asyncio.coroutine
       ... def test():
       ...     p = PV(pv_name)             # create a pv object given a pv name
-      ...     val = yield from p.get()    # get pv value
-      ...     yield from p.put(val)       # set pv to specified value.
+      ...     val = yield from p.aget()   # get pv value
+      ...     yield from p.aput(val)       # set pv to specified value.
       ...     return p
 
     Additional important attributes include::
@@ -217,26 +218,24 @@ class PV(object):
         yield from self.wait_for_connection()
 
     @asyncio.coroutine
-    def get(self, count=None, as_string=False, as_numpy=True, timeout=None,
-            with_ctrlvars=False, use_monitor=True):
-        """returns current value of PV.  Use the options:
-        count       explicitly limit count for array data
-        as_string   flag(True/False) to get a string representation
-                    of the value.
-        as_numpy    flag(True/False) to use numpy array as the
-                    return type for array data.
-        timeout     maximum time to wait for value to be received.
-                    (default = 0.5 + log10(count) seconds)
-        use_monitor flag(True/False) to use value from latest
-                    monitor callback (True, default) or to make an
-                    explicit CA call for the value.
+    def aget(self, count=None, as_string=False, as_numpy=True, timeout=None,
+             with_ctrlvars=False, use_monitor=True):
+        """Asychronously get the current value of the PV.
 
-        >>> value = yield from p.get('13BMD:m1.DIR')
-        >>> value
-        0
-        >>> value = yield from p.get('13BMD:m1.DIR', as_string=True)
-        >>> value
-        'Pos'
+        Parameters
+        ----------
+        count : int, optional
+            explicitly limit count for array data
+        as_string : bool, optional
+            get a string representation of the value.
+        as_numpy : bool, optional
+            use numpy array as the return type for array data.
+        timeout : float, optional
+            maximum time to wait for value to be received.
+                (default = 0.5 + log10(count) seconds)
+        use_monitor : bool, optional
+            use value from latest monitor callback (True, default) or to make an
+            explicit CA call for the value.
         """
         yield from self.wait_for_connection()
 
@@ -247,11 +246,9 @@ class PV(object):
                 (not self.auto_monitor) or
                 (self._args['value'] is None) or
                 (count is not None and count > len(self._args['value']))):
-            self._args['value'] = yield from coroutines.get(self.chid,
-                                                            ftype=self.ftype,
-                                                            count=count,
-                                                            timeout=timeout,
-                                                            as_numpy=as_numpy)
+            get_fut = coroutines.get(self.chid, ftype=self.ftype, count=count,
+                                     timeout=timeout, as_numpy=as_numpy)
+            self._args['value'] = yield from get_fut
 
         val = self._args['value']
         if as_string:
@@ -276,8 +273,8 @@ class PV(object):
         return val
 
     @asyncio.coroutine
-    def put(self, value, timeout=30.0, use_complete=False, callback=None,
-            callback_data=None):
+    def aput(self, value, timeout=30.0, use_complete=False, callback=None,
+             callback_data=None):
         """set value for PV, optionally waiting until the processing is
         complete, and optionally specifying a callback function to be run
         when the processing is complete.
@@ -302,6 +299,9 @@ class PV(object):
         yield from coroutines.put(self.chid, value, timeout=timeout,
                                   callback=callback,
                                   callback_data=callback_data)
+
+    get = blocking_wrapper(aget)
+    put = blocking_wrapper(aput)
 
     def _put_callback(self, pvname=None, **kws):
         '''default put-callback function'''

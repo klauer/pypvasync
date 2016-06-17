@@ -432,8 +432,10 @@ def _on_connection_event(args):
 @ca_callback_event
 def _on_monitor_event(args):
     global _cm
-    _cm.add_event(ca.current_context(), 'monitor',
-                  cast.cast_monitor_args(args))
+
+    ctx = ca.current_context()
+    args = cast.cast_monitor_args(args)
+    _cm.add_event(ctx, 'monitor', args)
 
 
 @ca_callback_event

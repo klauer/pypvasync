@@ -318,7 +318,7 @@ def caput(pvname, value, *, timeout=60):
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
-    ret = yield from thispv.put(value, timeout=timeout)
+    ret = yield from thispv.aput(value, timeout=timeout)
     return ret
 
 
@@ -344,9 +344,9 @@ def caget(pvname, *, as_string=False, count=None, as_numpy=True,
 
     if as_string:
         yield from thispv.get_ctrlvars()
-    val = yield from thispv.get(count=count, timeout=timeout,
-                                use_monitor=use_monitor,
-                                as_string=as_string, as_numpy=as_numpy)
+    val = yield from thispv.aget(count=count, timeout=timeout,
+                                 use_monitor=use_monitor, as_string=as_string,
+                                 as_numpy=as_numpy)
     return val
 
 
@@ -364,7 +364,7 @@ def cainfo(pvname):
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
-    yield from thispv.get()
+    yield from thispv.aget()
     yield from thispv.get_ctrlvars()
     return thispv.info
 

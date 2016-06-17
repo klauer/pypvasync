@@ -168,7 +168,6 @@ class ChannelCallbackRegistry:
             # anywhere and can potentially be cleared
             subs = list(self.subscriptions_by_chid(chid))
             if not subs:
-                print('clearing channel', chid)
                 self.context.clear_channel(chid)
 
     @_locked

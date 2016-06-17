@@ -41,7 +41,9 @@ from .alarm import (Alarm, )
 from .multiproc import (CAProcess, CAPool)
 from .alarm import (NO_ALARM, MINOR_ALARM, MAJOR_ALARM, INVALID_ALARM)
 
-from .coroutines import (caget, caput, get_ctrlvars, get_timevars,
+# TODO which to import at top-level?
+from .coroutines import (get_ctrlvars, get_timevars,
                          get_timestamp, get_severity, get_precision,
-                         get_enum_strings, cainfo, caget_many)
+                         get_enum_strings, cainfo)
 
+from .sync import (caget, caput, caget_many)

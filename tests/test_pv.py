@@ -7,7 +7,7 @@ import numpy as np
 from .util import (no_simulator_updates, async_test)
 from . import pvnames
 
-from epics import PV, caput, caget, ca
+from epics import (PV, caput, caget)
 from unittest import mock
 
 
@@ -23,7 +23,7 @@ class PV_Tests(unittest.TestCase):
         '''Simple Test: create pv with conn callback'''
         on_connect = mock.Mock()
         pv = PV(pvnames.int_pv, connection_callback=on_connect)
-        yield from pv.get()
+        value = yield from pv.aget()
 
         on_connect.assert_called_with(pvname=pvnames.int_pv, connected=True,
                                       pv=pv)
@@ -46,8 +46,8 @@ class PV_Tests(unittest.TestCase):
     def test_get1(self):
         '''Simple Test: test value and char_value on an integer'''
         pv = PV(pvnames.int_pv)
-        val = yield from pv.get()
-        cval = yield from pv.get(as_string=True)
+        val = yield from pv.aget()
+        cval = yield from pv.aget(as_string=True)
 
         self.assertEquals(int(cval), val)
 
@@ -57,7 +57,7 @@ class PV_Tests(unittest.TestCase):
     def test_get_string_waveform(self):
         '''String Array: '''
         pv = PV(pvnames.string_arr_pv)
-        val = yield from pv.get()
+        val = yield from pv.aget()
         self.assertGreater(len(val), 10)
         self.assertIsInstance(val[0], str)
         self.assertGreater(len(val[0]), 1)
@@ -71,8 +71,8 @@ class PV_Tests(unittest.TestCase):
         '''String Array: '''
         pv = PV(pvnames.string_arr_pv)
         put_value = ['a', 'b', 'c']
-        yield from pv.put(put_value)
-        get_value = yield from pv.get(use_monitor=False, count=len(put_value))
+        yield from pv.aput(put_value)
+        get_value = yield from pv.aget(use_monitor=False, count=len(put_value))
         np.testing.assert_array_equal(get_value, put_value)
 
     @async_test
@@ -102,8 +102,8 @@ class PV_Tests(unittest.TestCase):
 
         for v in vals:
             done_callback = mock.Mock()
-            yield from p.put(v, use_complete=True, callback=done_callback)
-            rbv = yield from p.get()
+            yield from p.aput(v, use_complete=True, callback=done_callback)
+            rbv = yield from p.aget()
             self.assertAlmostEqual(rbv, v, delta=retry_deadband)
             self.assertTrue(done_callback.called)
 
@@ -136,9 +136,9 @@ class PV_Tests(unittest.TestCase):
         yield from caput("%s.NELM" % pvnames.subarr1, len_sub1)
         yield from caput("%s.INDX" % pvnames.subarr1, 0)
 
-        yield from driver.put(full_data)
+        yield from driver.aput(full_data)
         yield from asyncio.sleep(0.1)
-        subval = yield from subarr1.get()
+        subval = yield from subarr1.aget()
 
         self.assertEqual(len(subval), len_sub1)
         np.testing.assert_array_equal(subval, full_data[:len_sub1])
@@ -147,11 +147,11 @@ class PV_Tests(unittest.TestCase):
         yield from caput("%s.INDX" % pvnames.subarr2, 3)
 
         subarr2 = PV(pvnames.subarr2)
-        yield from subarr2.get()
+        yield from subarr2.aget()
 
-        yield from driver.put(full_data)
+        yield from driver.aput(full_data)
         yield from asyncio.sleep(0.1)
-        subval = yield from subarr2.get()
+        subval = yield from subarr2.aget()
 
         self.assertEqual(len(subval), 19)
         np.testing.assert_array_equal(subval, full_data[3:3 + 19])
@@ -159,9 +159,9 @@ class PV_Tests(unittest.TestCase):
         yield from caput("%s.NELM" % pvnames.subarr2, 5)
         yield from caput("%s.INDX" % pvnames.subarr2, 13)
 
-        yield from driver.put(full_data)
+        yield from driver.aput(full_data)
         yield from asyncio.sleep(0.1)
-        subval = yield from subarr2.get()
+        subval = yield from subarr2.aget()
 
         self.assertEqual(len(subval), 5)
         np.testing.assert_array_equal(subval, full_data[13:5+13])
@@ -174,9 +174,9 @@ class PV_Tests(unittest.TestCase):
 #        zerostr = PV(pvnames.char_arr_zeroish_length_pv, auto_monitor=False)
 #        yield from zerostr.wait_for_connection()
 
-#        val = yield from zerostr.get(as_string=True)
+#        val = yield from zerostr.aget(as_string=True)
 #        self.assertEquals(val, '')
-#        val = yield from zerostr.get(as_string=False)
+#        val = yield from zerostr.aget(as_string=False)
 #        self.assertEquals(val, 0)
 
 #     @async_test
@@ -194,12 +194,12 @@ class PV_Tests(unittest.TestCase):
         subarr1 = PV(pvnames.zero_len_subarr1)
         yield from subarr1.wait_for_connection()
 
-        val = yield from subarr1.get(use_monitor=True, as_numpy=True)
+        val = yield from subarr1.aget(use_monitor=True, as_numpy=True)
         self.assertIsInstance(val, np.ndarray, msg='using monitor')
         self.assertEquals(len(val), 0, msg='using monitor')
         self.assertEquals(val.dtype, np.float64, msg='using monitor')
 
-        val = yield from subarr1.get(use_monitor=False, as_numpy=True)
+        val = yield from subarr1.aget(use_monitor=False, as_numpy=True)
         self.assertIsInstance(val, np.ndarray, msg='no monitor')
         self.assertEquals(len(val), 0, msg='no monitor')
         self.assertEquals(val.dtype, np.float64, msg='no monitor')
@@ -207,16 +207,16 @@ class PV_Tests(unittest.TestCase):
     @async_test
     def test_enum_put(self):
         pv = PV(pvnames.enum_pv)
-        yield from pv.put('Stop')
+        yield from pv.aput('Stop')
         yield from asyncio.sleep(0.1)
-        val = yield from pv.get()
+        val = yield from pv.aget()
         self.assertEqual(val, 0)
 
     @async_test
     def test_DoubleVal(self):
         pvn = pvnames.double_pv
         pv = PV(pvn)
-        yield from pv.get()
+        yield from pv.aget()
         cdict = yield from pv.get_ctrlvars()
         print('Testing CTRL Values for a Double (%s)\n' % (pvn))
         self.assertIn('severity', cdict)
@@ -239,15 +239,15 @@ class PV_Tests(unittest.TestCase):
         native_values = {}
 
         for native_pv in native_pvs:
-            native_values[native_pv] = yield from native_pv.get()
+            native_values[native_pv] = yield from native_pv.aget()
             info = yield from native_pv.get_info()
 
         for promotion in ('ctrl', 'time'):
             for native_pv, native_value in native_values.items():
                 promoted_pv = PV(native_pv.pvname, form=promotion)
 
-                val = yield from promoted_pv.get(as_numpy=True)
-                cval = yield from promoted_pv.get(as_string=True)
+                val = yield from promoted_pv.aget(as_numpy=True)
+                cval = yield from promoted_pv.aget(as_string=True)
 
                 msg = 'pv {} form={}'.format(native_pv.pvname, promotion)
                 if isinstance(val, np.ndarray):
@@ -259,7 +259,7 @@ class PV_Tests(unittest.TestCase):
     @async_test
     def test_waveform_get_1elem(self):
         pv = PV(pvnames.double_arr_pv)
-        val = yield from pv.get(count=1, use_monitor=False)
+        val = yield from pv.aget(count=1, use_monitor=False)
         self.assertIsInstance(val, np.ndarray)
         self.assertEquals(len(val), 1)
         # TODO other fix
