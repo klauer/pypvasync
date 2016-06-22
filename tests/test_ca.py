@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # test expression parsing
 import os
-import sys
 import time
 import numpy
 import ctypes
@@ -15,13 +14,14 @@ from .util import (no_simulator_updates, async_test)
 from . import pvnames
 
 
+@asyncio.coroutine
 def _ca_connect(chid, timeout=5.0):
     n = 0
     t0 = time.time()
-    conn = 2==ca.state(chid)
-    while (not conn) and (time.time()-t0 < timeout):
-        ca.poll(1.e-6,1.e-4)
-        conn = 2==ca.state(chid)
+    conn = (2 == ca.state(chid))
+    while (not conn) and (time.time() - t0 < timeout):
+        yield from asyncio.sleep(0.1)
+        conn = (2 == ca.state(chid))
         n += 1
     return conn, time.time()-t0, n
 
@@ -32,12 +32,15 @@ _change_dict = {}
 
 # API: conn kwarg is now connected
 def onConnect(pvname=None, connected=None, chid=None,  **kws):
-    print('  /// Connection status changed:  %s  %s' % (pvname, repr(kws)))
+    print('  [onConnect] Connection status changed:  %s %s kw=%s'
+          '' % (pvname, connected, repr(kws)))
     _connection_dict[pvname] = connected
 
+
 def onChanges(pvname=None, value=None, **kws):
-    print('/// New Value: %s  value=%s, kw=%s' %( pvname, str(value), repr(kws)))
+    print('[onChanges] %s=%s, kw=%s' % (pvname, str(value), repr(kws)))
     _change_dict[pvname] = value
+
 
 @pytest.fixture
 def ctx():
@@ -63,7 +66,7 @@ def testA_GetNonExistentPV(ctx):
 def testA_CreateChid_CheckTypeCount(ctx):
     print('Simple Test: create chid, check count, type, host, and access')
     chid = ctx.create_channel(pvnames.double_pv)
-    ret = yield from ctx.connect_channel(chid)
+    yield from ctx.connect_channel(chid)
 
     ftype = ca.field_type(chid)
     count = ca.element_count(chid)
@@ -83,9 +86,9 @@ def testA_CreateChidWithConn(ctx):
     print('Simple Test: create chid with conn callback')
     chid = ctx.create_channel(pvnames.int_pv, callback=onConnect)
     print('created')
-    ret = yield from ctx.connect_channel(chid)
+    yield from ctx.connect_channel(chid)
     print('connected')
-    val = yield from coroutines.get(chid)
+    yield from coroutines.get(chid)
     print('got')
 
     conn = _connection_dict.get(pvnames.int_pv, None)
@@ -93,26 +96,11 @@ def testA_CreateChidWithConn(ctx):
     assert conn
 
 
-def test_dbrName():
-    print('DBR Type Check')
-    assert dbr.Name(dbr.STRING) == 'STRING'
-    assert dbr.Name(dbr.FLOAT) ==  'FLOAT'
-    assert dbr.Name(dbr.ENUM) == 'ENUM'
-    assert dbr.Name(dbr.CTRL_CHAR) == 'CTRL_CHAR'
-    assert dbr.Name(dbr.TIME_DOUBLE) == 'TIME_DOUBLE'
-    assert dbr.Name(dbr.TIME_LONG) == 'TIME_LONG'
-
-    assert dbr.Name('STRING', reverse=True) == dbr.STRING
-    assert dbr.Name('DOUBLE', reverse=True) == dbr.DOUBLE
-    assert dbr.Name('CTRL_ENUM', reverse=True) == dbr.CTRL_ENUM
-    assert dbr.Name('TIME_LONG', reverse=True) == dbr.TIME_LONG
-
-
 @async_test
 @asyncio.coroutine
 def test_Connect1(ctx):
     chid = ctx.create_channel(pvnames.double_pv)
-    conn,dt,n = _ca_connect(chid, timeout=2)
+    conn, dt, n = yield from _ca_connect(chid, timeout=2)
     print('CA Connection Test1: connect to existing PV')
     print(' connected in %.4f sec' % (dt))
     assert conn
@@ -122,12 +110,13 @@ def test_Connect1(ctx):
 @asyncio.coroutine
 def test_Connected(ctx):
     pvn = pvnames.double_pv
-    chid = ctx.create_channel(pvn,connect=True)
-    isconn = ca.isConnected(chid)
-    print('CA test Connected (%s) = %s' % (pvn,isconn))
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
+    isconn = ca.is_connected(chid)
+    print('CA test Connected (%s) = %s' % (pvn, isconn))
     assert isconn
-    state= ca.state(chid)
-    assert state == ca.dbr.CS_CONN
+    state = ca.state(chid)
+    assert state == dbr.ConnStatus.CS_CONN
     acc = ca.access(chid)
     assert acc == 'read/write'
 
@@ -136,9 +125,10 @@ def test_Connected(ctx):
 @asyncio.coroutine
 def test_DoubleVal(ctx):
     pvn = pvnames.double_pv
-    chid = ctx.create_channel(pvn,connect=True)
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
     cdict = yield from coroutines.get_ctrlvars(chid)
-    print('CA testing CTRL Values for a Double (%s)'   % (pvn))
+    print('CA testing CTRL Values for a Double (%s)' % (pvn))
     assert 'units' in cdict
     assert 'precision' in cdict
     assert 'severity' in cdict
@@ -149,16 +139,17 @@ def test_DoubleVal(ctx):
     count = ca.element_count(chid)
     assert count == 1
 
-    ftype= ca.field_type(chid)
-    assert ftype == ca.dbr.DOUBLE
+    ftype = ca.field_type(chid)
+    assert ftype == dbr.ChannelType.DOUBLE
 
     prec = yield from coroutines.get_precision(chid)
     assert prec == pvnames.double_pv_prec
 
-    units= ca.BYTES2STR(ca.get_ctrlvars(chid)['units'])
+    cvars = yield from coroutines.get_ctrlvars(chid)
+    units = cvars['units']
     assert units == pvnames.double_pv_units
 
-    rwacc= ca.access(chid)
+    rwacc = ca.access(chid)
     assert rwacc.startswith('read')
 
 
@@ -167,7 +158,7 @@ def test_DoubleVal(ctx):
 def test_UnConnected(ctx):
     print('CA Connection Test1: connect to non-existing PV (2sec timeout)')
     chid = ctx.create_channel('impossible_pvname_certain_to_fail')
-    conn,dt,n = _ca_connect(chid, timeout=2)
+    conn, dt, n = yield from _ca_connect(chid, timeout=2)
     assert not conn
 
 
@@ -176,35 +167,40 @@ def test_UnConnected(ctx):
 def test_putwait(ctx):
     'test put with wait'
     pvn = pvnames.non_updating_pv
-    chid = ctx.create_channel(pvn, connect=True)
-    o  = ca.put(chid, -1, wait=True)
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
+    yield from coroutines.put(chid, -1)
     val = yield from coroutines.get(chid)
     assert val == -1
-    o  = ca.put(chid, 2, wait=True)
+    yield from coroutines.put(chid, 2)
     val = yield from coroutines.get(chid)
     assert val == 2
 
 
+@async_test
+@asyncio.coroutine
 def test_promote_type(ctx):
     pvn = pvnames.double_pv
-    chid = ctx.create_channel(pvn,connect=True)
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
     print('CA promote type (%s)' % (pvn))
-    f_t  = ca.promote_type(chid,use_time=True)
-    f_c  = ca.promote_type(chid,use_ctrl=True)
-    assert f_t == ca.dbr.TIME_DOUBLE
-    assert f_c == ca.dbr.CTRL_DOUBLE
+    f_t = dbr.promote_type(ca.field_type(chid), use_time=True)
+    f_c = dbr.promote_type(ca.field_type(chid), use_ctrl=True)
+    assert f_t == dbr.ChannelType.TIME_DOUBLE
+    assert f_c == dbr.ChannelType.CTRL_DOUBLE
 
 
 @async_test
 @asyncio.coroutine
 def test_ProcPut(ctx):
-    pvn  = pvnames.enum_pv
-    chid = ctx.create_channel(pvn, connect=True)
+    pvn = pvnames.enum_pv
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
     print('CA test put to PROC Field (%s)' % (pvn))
     for input in (1, '1', 2, '2', 0, '0', 50, 1):
         ret = None
         try:
-            ret = ca.put(chid, 1)
+            ret = yield from coroutines.put(chid, 1)
         except:
             pass
         assert ret is not None
@@ -214,17 +210,18 @@ def test_ProcPut(ctx):
 @asyncio.coroutine
 def test_subscription_double(ctx):
     pvn = pvnames.updating_pv1
-    chid = ctx.create_channel(pvn,connect=True)
-    cb, uarg, eventID = ca.create_subscription(chid, callback=onChanges)
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
+    handler, cbid = ctx.subscribe(sig='monitor', chid=chid, func=onChanges)
 
     start_time = time.time()
     global _change_dict
     while time.time()-start_time < 5.0:
-        time.sleep(0.01)
+        yield from asyncio.sleep(0.01)
         if _change_dict.get(pvn, None) is not None:
             break
     val = _change_dict.get(pvn, None)
-    ca.clear_subscription(eventID)
+    ctx.unsubscribe(cbid)
     assert val is not None
 
 
@@ -232,24 +229,23 @@ def test_subscription_double(ctx):
 @asyncio.coroutine
 def test_subscription_custom(ctx):
     pvn = pvnames.updating_pv1
-    chid = ctx.create_channel(pvn, connect=True)
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
 
     global change_count
     change_count = 0
 
     def my_callback(pvname=None, value=None, **kws):
-        print(' Custom Callback  %s  value=%s' %(pvname, str(value)))
+        print(' Custom Callback  %s  value=%s' % (pvname, str(value)))
         global change_count
         change_count = change_count + 1
 
-    cb, uarg, eventID = ca.create_subscription(chid, callback=my_callback)
+    handler, cbid = ctx.subscribe(sig='monitor', chid=chid, func=my_callback)
 
-    start_time = time.time()
-    while time.time()-start_time < 2.0:
-        time.sleep(0.01)
+    yield from asyncio.sleep(2.0)
 
-    ca.clear_subscription(eventID)
-    time.sleep(0.2)
+    ctx.unsubscribe(cbid)
+    yield from asyncio.sleep(0.2)
     assert change_count > 2
 
 
@@ -258,77 +254,79 @@ def test_subscription_custom(ctx):
 def test_subscription_str(ctx):
     pvn = pvnames.updating_str1
     print(" Subscription on string: %s " % pvn)
-    chid = ctx.create_channel(pvn,connect=True)
-    cb, uarg, eventID = ca.create_subscription(chid, callback=onChanges)
+    chid = ctx.create_channel(pvn)
+    yield from ctx.connect_channel(chid)
+    handler, cbid = ctx.subscribe(sig='monitor', chid=chid, func=onChanges)
 
     start_time = time.time()
     global _change_dict
-    while time.time()-start_time < 3.0:
-        time.sleep(0.01)
-        ca.put(chid, "%.1f" % (time.time()-start_time) )
+    while (time.time() - start_time) < 3.0:
+        yield from asyncio.sleep(0.01)
+        yield from coroutines.put(chid, "%.1f" % (time.time() - start_time))
         if _change_dict.get(pvn, None) is not None:
             break
     val = _change_dict.get(pvn, None)
     # ca.clear_subscription(eventID)
+    ctx.unsubscribe(cbid)
     assert val is not None
-    time.sleep(0.2)
+    yield from asyncio.sleep(0.2)
 
 
-def _array_callback(ctx, arrayname, array_type, length, element_type):
+@async_test
+@asyncio.coroutine
+@pytest.mark.parametrize(
+    'arrayname, array_type, length, element_type',
+    [(pvnames.long_arr_pv, numpy.ndarray, 2048, numpy.int32),
+     (pvnames.double_arr_pv, numpy.ndarray, 2048, numpy.float64),
+     (pvnames.string_arr_pv, list, 128, str),
+     (pvnames.char_arr_pv, numpy.ndarray, 128, numpy.uint8),
+     ],
+    )
+def test_array_callbacks(ctx, arrayname, array_type, length, element_type):
     """ Helper function to subscribe to a PV array and check it
     receives at least one subscription callback w/ specified type,
     length & uniform element type. Checks separately for normal,
     TIME & CTRL subscription variants. Returns the array or fails
     an assertion."""
     results = {}
-    for form in [ 'normal', 'time', 'ctrl' ]:
-        chid = ctx.create_channel(arrayname,connect=True)
-        cb, uarg, eventID = ca.create_subscription(chid, use_time=form=='time', use_ctrl=form=='ctrl', callback=onChanges)
+    for form in ['normal', 'time', 'ctrl']:
+        chid = ctx.create_channel(arrayname)
+        yield from ctx.connect_channel(chid)
+        ftype = dbr.promote_type(ca.field_type(chid),
+                                 use_time=(form == 'time'),
+                                 use_ctrl=(form == 'ctrl'))
+        handler, cbid = ctx.subscribe(sig='monitor', chid=chid, ftype=ftype,
+                                      func=onChanges)
 
         _change_dict.pop(arrayname, None)
-        timeout=0
+        timeout = 0
         # wait up to 6 seconds, if no callback probably due to simulator.py
         # not running...
-        while timeout<120 and not arrayname in _change_dict:
-            time.sleep(0.05)
+        while timeout < 120 and not arrayname in _change_dict:
+            yield from asyncio.sleep(0.05)
             timeout = timeout+1
         val = _change_dict.get(arrayname, None)
-        ca.clear_subscription(eventID)
+        ctx.unsubscribe(cbid)
         assert val is not None
         assert type(val) == array_type
         assert len(val) == length
         assert type(val[0]) == element_type
-        assert all( type(e)==element_type for e in val)
+        assert all(type(e) == element_type for e in val)
         results[form] = val
     return results
 
 
-def test_subscription_long_array(ctx):
-    """ Check that numeric arrays callbacks successfully send correct data """
-    _array_callback(ctx, pvnames.long_arr_pv, numpy.ndarray, 2048, numpy.int32)
-
-
-def test_subscription_double_array(ctx):
-    """ Check that double arrays callbacks successfully send correct data """
-    _array_callback(ctx, pvnames.double_arr_pv, numpy.ndarray, 2048, numpy.float64)
-
-
-def test_subscription_string_array(ctx):
-    """ Check that string array callbacks successfully send correct data """
-    results = _array_callback(ctx, pvnames.string_arr_pv, list, 128, str)
-    assert len(results["normal"][0]) > 0
-    assert len(results["time"][0]) > 0
-    assert len(results["ctrl"][0]) > 0
-
-
-def test_subscription_char_array(ctx):
-    """ Check that uchar array callbacks successfully send correct data as arrays """
-    _array_callback(ctx, pvnames.char_arr_pv, numpy.ndarray, 128, numpy.uint8)
+# def test_subscription_string_array(ctx):
+#     """ Check that string array callbacks successfully send correct data """
+#     results = _array_callback(ctx,
+#     assert len(results["normal"][0]) > 0
+#     assert len(results["time"][0]) > 0
+#     assert len(results["ctrl"][0]) > 0
 
 
 @async_test
-@no_simulator_updates
 @asyncio.coroutine
+@no_simulator_updates
 def test_Values(ctx):
     print('CA test Values (compare 5 values with caget)')
     os.system('rm ./caget.tst')
@@ -344,15 +342,15 @@ def test_Values(ctx):
     for line in rlines:
         pvn, sval = [i.strip() for i in line[:-1].split(' ', 1)]
         tval = str(vals[pvn])
-        if pvn in (pvnames.float_pv,pvnames.double_pv):
+        if pvn in (pvnames.float_pv, pvnames.double_pv):
             # use float precision!
             tval = "%.5f" % vals[pvn]
         assert tval == sval
 
 
 @async_test
-@no_simulator_updates
 @asyncio.coroutine
+@no_simulator_updates
 def test_type_conversions_1(ctx):
     print("CA type conversions scalars")
     pvlist = (pvnames.str_pv, pvnames.int_pv, pvnames.float_pv,
@@ -362,8 +360,7 @@ def test_type_conversions_1(ctx):
         chid = ctx.create_channel(name)
         yield from ctx.connect_channel(chid)
         chids.append((chid, name))
-        ca.poll(evt=0.025, iot=5.0)
-    ca.poll(evt=0.05, iot=10.0)
+        # yield from asyncio.sleep(0.1)
 
     values = {}
     for chid, name in chids:
@@ -373,13 +370,13 @@ def test_type_conversions_1(ctx):
         for chid, pvname in chids:
             print('=== %s  chid=%s as %s' % (ca.name(chid), repr(chid),
                                              promotion))
-            time.sleep(0.01)
+            yield from asyncio.sleep(0.01)
             if promotion == 'ctrl':
-                ntype = ca.promote_type(chid, use_ctrl=True)
+                ntype = dbr.promote_type(ca.field_type(chid), use_ctrl=True)
             else:
-                ntype = ca.promote_type(chid, use_time=True)
+                ntype = dbr.promote_type(ca.field_type(chid), use_time=True)
 
-            val  = yield from coroutines.get(chid, ftype=ntype)
+            val = yield from coroutines.get(chid, ftype=ntype)
             cval = yield from coroutines.get(chid, as_string=True)
             if ca.element_count(chid) > 1:
                 val = val[:12]
@@ -387,8 +384,8 @@ def test_type_conversions_1(ctx):
 
 
 @async_test
-@no_simulator_updates
 @asyncio.coroutine
+@no_simulator_updates
 def test_type_converions_2(ctx):
     print("CA type conversions arrays")
     pvlist = (pvnames.char_arr_pv,
@@ -399,8 +396,7 @@ def test_type_converions_2(ctx):
         chid = ctx.create_channel(name)
         yield from ctx.connect_channel(chid)
         chids.append((chid, name))
-        ca.poll(evt=0.025, iot=5.0)
-    ca.poll(evt=0.05, iot=10.0)
+        # yield from asyncio.sleep(0.1)
 
     values = {}
     for chid, name in chids:
@@ -409,14 +405,14 @@ def test_type_converions_2(ctx):
         for chid, pvname in chids:
             print('=== %s  chid=%s as %s' % (ca.name(chid), repr(chid),
                                              promotion))
-            time.sleep(0.01)
+            yield from asyncio.sleep(0.01)
             if promotion == 'ctrl':
-                ntype = ca.promote_type(chid, use_ctrl=True)
+                ntype = dbr.promote_type(ca.field_type(chid), use_ctrl=True)
             else:
-                ntype = ca.promote_type(chid, use_time=True)
+                ntype = dbr.promote_type(ca.field_type(chid), use_time=True)
 
-            val  = yield from coroutines.get(chid, ftype=ntype)
-            cval = yield from coroutines.get(chid, as_string=True)
+            val = yield from coroutines.get(chid, ftype=ntype)
+            yield from coroutines.get(chid, as_string=True)
             for a, b in zip(val, values[pvname]):
                 assert a == b
 
@@ -426,6 +422,7 @@ def test_type_converions_2(ctx):
 def test_Array0(ctx):
     print('Array Test: get double array as numpy array, ctypes Array, and list')
     chid = ctx.create_channel(pvnames.double_arrays[0])
+    yield from ctx.connect_channel(chid)
     aval = yield from coroutines.get(chid)
     cval = yield from coroutines.get(chid, as_numpy=False)
 

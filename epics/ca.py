@@ -320,7 +320,6 @@ def write_access(chid):
 @withCHID
 def field_type(chid):
     "return the integer DBR field type."
-    # print(" Field Type", chid)
     return libca.ca_field_type(chid)
 
 

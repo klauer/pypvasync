@@ -202,7 +202,7 @@ class CAContextHandler:
     def add_event(self, type_, info):
         self._event_queue.put((type_, info), block=False)
 
-    def create_channel(self, pvname, *, callback=None, connect=False):
+    def create_channel(self, pvname, *, callback=None):
         try:
             return self.pv_to_channel[pvname]
         except KeyError:
@@ -224,9 +224,6 @@ class CAContextHandler:
             if callback is not None:
                 self.subscribe(sig='connection', chid=chid, func=callback,
                                oneshot=True)
-
-        if connect:
-            yield from self.connect_channel(chid)
 
         return chid
 

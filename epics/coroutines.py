@@ -62,12 +62,12 @@ def _as_string(val, chid, count, ftype):
 @asyncio.coroutine
 def get(chid, ftype=None, count=None, timeout=None, as_string=False,
         as_numpy=True):
-    """return the current value for a Channel.
+    """Return the current value for a channel.
     Note that there is not a separate form for array data.
 
     Parameters
     ----------
-    chid :  ctypes.c_long
+    chid : ctypes.c_long
        Channel ID
     ftype : int
        field type to use (native type is default)
