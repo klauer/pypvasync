@@ -6,7 +6,7 @@ and CAPool, pool of CAProcesses
 Use CAProcess in place of multiprocessing.Process if your process will be calling
 Channel Access or using Epics process variables
 
-   from epics import (CAProcess, CAPool)
+   from pvasync import (CAProcess, CAPool)
 
 """
 #

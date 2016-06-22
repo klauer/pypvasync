@@ -2,7 +2,7 @@ import asyncio
 import functools
 import logging
 
-from epics import coroutines
+from pvasync import coroutines
 
 from . import pvnames
 

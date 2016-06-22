@@ -57,7 +57,7 @@ install:
   # install pyepics dependencies
   - conda install numpy
   - pip install pytest pytest-cov codecov
-  # install pyepics as a source install
+  # install pypvasync as a source install
   - python setup.py develop
 
   # setup some path environment variables for epics
@@ -75,22 +75,22 @@ before_script:
 
 script:
   # check/record some basic pyepics things
-  - echo "Checking pyepics version and libca locations:"
-  - python -c "import epics; print(epics.__version__)"
-  - python -c "import epics.ca; print(epics.ca.find_libca())"
+  - echo "Checking pypvasync version and libca locations:"
+  - python -c "import pvasync; print(pvasync.__version__)"
+  - python -c "import pvasync.find_libca; print(pvasync.find_libca.find_libca())"
 
   - echo "Checking if the motor/areadetector IOC is running:"
-  - python -c "import epics; print('mtr1', epics.caget('sim:mtr1.RBV'))"
-  - python -c "import epics; print('arraycounter', epics.caget('sim:det:ROI1:ArrayCounter'))"
-  - echo "Checking if the pyepics test suite ioc is running:"
-  - python -c "import epics; print('long1', epics.caget('Py:long1'))"
+  - python -c "import pvasync; print('mtr1', pvasync.caget('sim:mtr1.RBV'))"
+  - python -c "import pvasync; print('arraycounter', pvasync.caget('sim:det:ROI1:ArrayCounter'))"
+  - echo "Checking if the pypvasync test suite ioc is running:"
+  - python -c "import pvasync; print('long1', pvasync.caget('Py:long1'))"
 
   - caget sim:mtr1.RBV
   - caget sim:det:ROI1:ArrayCounter
   - caget Py:long1
 
   # running tests
-  - py.test -vv --cov=epics --cov-report term-missing tests || RESULT=$?
+  - py.test -vv --cov=pvasync --cov-report term-missing tests || RESULT=$?
   - if [[ ${RESULT} != 0 ]]; then gdb python core* -ex "thread apply all bt" -ex "set pagination 0" -batch; fi
   - if [[ ${RESULT} != 0 ]]; then exit $RESULT ; fi;
 

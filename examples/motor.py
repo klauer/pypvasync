@@ -1,11 +1,11 @@
 import logging
 
 import asyncio
-import epics
+import pvasync
 import threading
-from epics.coroutines import caget, caput
+from pvasync.coroutines import caget, caput
 
-print(epics.__file__)
+print(pvasync.__file__)
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +15,14 @@ logging.basicConfig()
 pvname = 'XF:31IDA-OP{Tbl-Ax:X1}Mtr.RBV'
 write_pvname = 'XF:31IDA-OP{Tbl-Ax:X1}Mtr.VAL'
 
+
 def monitor(value=None, pvname=None, **kwd):
     print('!!! monitor {}={}'.format(pvname, value))
 
 
 @asyncio.coroutine
 def test_caget():
-    mon_pv = epics.PV(pvname, auto_monitor=True)
+    mon_pv = pvasync.PV(pvname, auto_monitor=True)
     mon_pv.add_callback(monitor)
 
     value = yield from caget(pvname)
@@ -49,7 +50,7 @@ def test_caget():
     value = yield from caget(pvname)
     print('read back', value)
 
-    pv = epics.PV(pvname)
+    pv = pvasync.PV(pvname)
     print('pv created', pv)
     yield from pv.wait_for_connection()
     print('pv connected', pv)
@@ -66,7 +67,7 @@ def test_caget():
     print('final move to 1.0 with put callback test')
 
     thread_id = []
-    write_pv = epics.PV(write_pvname)
+    write_pv = pvasync.PV(write_pvname)
     yield from write_pv.put(1.0, callback=move_done, callback_data=thread_id)
     print('main function, move completed')
 

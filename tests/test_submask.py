@@ -1,9 +1,9 @@
 import pytest
 import threading
 
-from epics import dbr
-from epics.context import MonitorCallback
-from epics.dbr import native_types
+from pvasync import dbr
+from pvasync.context import MonitorCallback
+from pvasync.dbr import native_types
 
 
 def check_order(lesser, greater):

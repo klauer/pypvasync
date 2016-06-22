@@ -7,8 +7,8 @@ import numpy as np
 from .util import (no_simulator_updates, async_test)
 from . import pvnames
 
-from epics import PV
-from epics.coroutines import (caget, caput)
+from pvasync import PV
+from pvasync.coroutines import (caget, caput)
 from unittest import mock
 
 

@@ -13,7 +13,7 @@ Files -
 xxx.req - A request file with a list of pvs to save. Format is the same as autosave request format,
           including being able to have "file yyy.req VAR=A,OTHER=B" style macro expansions.
 
-xxx.sav - A saved file with the current PV values, to save/restore. Standalone file, this is a 
+xxx.sav - A saved file with the current PV values, to save/restore. Standalone file, this is a
           compatible format to the .sav files which are used by autosave.
 
 This module requires/uses pyparsing parser framework. Debian/Ubuntu package is "python-pyparsing"
@@ -30,12 +30,12 @@ import os
 import time
 import datetime
 import json
-from epics.pv import PV
+from pvasync.pv import PV
 
 def restore_pvs(filepath, debug=False):
-    """ 
-    Restore pvs from a save file via Channel Access 
-    
+    """
+    Restore pvs from a save file via Channel Access
+
     debug - Set to True if you want a line printed for each value set
 
     Returns True if all pvs were restored successfully.
@@ -49,14 +49,14 @@ def restore_pvs(filepath, debug=False):
             break
         if line.startswith('#'):
             continue
-        pvname, value = [w.strip() for w in line[:-1].split(' ', 1)]            
+        pvname, value = [w.strip() for w in line[:-1].split(' ', 1)]
         if value.startswith('<JSON>:'):  # for older version, could be deprecated
             value = value.replace('<JSON>:', '@array@')
         if value.startswith('@array@'):
             value = value.replace('@array@', '').strip()
             if value.startswith('{') and value.endswith('}'):
                 value = value[1:-1]
-            value = json.loads(value)            
+            value = json.loads(value)
         if debug:
             print( "Setting %s to %s..." % (pvname, value))
         try:
@@ -75,7 +75,7 @@ def restore_pvs(filepath, debug=False):
                                                      exctype, excvalue))
             success = False
     return success
-    
+
 def save_pvs(request_file, save_pvs, debug=False):
     """
     Save pvs from a request file to a save file, via Channel Access
@@ -106,15 +106,15 @@ def save_pvs(request_file, save_pvs, debug=False):
             print( "PV %s = %s" % (pv, val))
 
     f = open(save_pvs, "w")
-    f.write("# File saved by pyepics autosave.save_pvs() on %s\n" % 
+    f.write("# File saved by pyepics autosave.save_pvs() on %s\n" %
             datetime.datetime.now().isoformat())
     f.write("# Edit with extreme care.\n")
     f.writelines([ "%s %s\n" % v for v in pv_vals ])
     f.write("<END>\n")
     f.close()
-    
+
 def _parse_request_file(request_file, macro_values={}):
-    """ 
+    """
     Internal function to parse a request file.
 
     Parse happens in two stages, first build an AST then walk it and do
@@ -150,7 +150,7 @@ ignored_comma = Literal(',').suppress()
 
 file_name = Word(alphanums+":._-+/\\")
 
-number = Word(nums) 
+number = Word(nums)
 integer = Combine( Optional(minus) + number )
 float_number = Combine( integer +
                         Optional( point + Optional(number) )

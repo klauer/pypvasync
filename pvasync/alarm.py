@@ -37,7 +37,7 @@ class Alarm(object):
                       when a PVs value actually changes.  See note below.
 
     example:
-       >>> from epics import alarm, poll
+       >>> from pvasync import alarm, poll
        >>> def alarmHandler(pvname=None, value=None, **kw):
        >>>     print 'Alarm!! ', pvname, value
        >>> alarm(pvname = 'XX.VAL',

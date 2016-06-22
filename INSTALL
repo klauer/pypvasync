@@ -78,8 +78,9 @@ prominent warning if libca.so cannot be found.
 
 To test this yourself,  run python from the current directory and 
 type:
-    >>> import lib as epics
-    >>> epics.ca.find_libca()
+    >>> import pvasync
+    >>> import pvasync.find_libca
+    >>> pvasync.find_libca.find_libca()
 
 This should report the full name of dynamic CA library (libca.so, ca.dll,
 or libca.dylib).   It it does not, or reports an error, you should

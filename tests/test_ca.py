@@ -5,9 +5,9 @@ import time
 import numpy
 import ctypes
 import asyncio
-from epics import (ca, dbr, coroutines)
-from epics.context import get_current_context
-from epics.errors import ChannelAccessException
+from pvasync import (ca, dbr, coroutines)
+from pvasync.context import get_current_context
+from pvasync.errors import ChannelAccessException
 import pytest
 
 from .util import (no_simulator_updates, async_test)

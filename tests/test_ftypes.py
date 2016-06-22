@@ -1,11 +1,8 @@
-import epics
+import pvasync
 import pytest
 
-from epics import dbr
-from epics.dbr import (ChannelType as ChType,
-                       native_types,
-                       promote_type,
-                       )
+from pvasync import dbr
+from pvasync.dbr import (ChannelType as ChType, native_types, promote_type)
 
 
 @pytest.mark.parametrize('ntype', native_types)
