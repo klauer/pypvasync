@@ -317,7 +317,7 @@ class CAContextHandler:
         if self._tasks:
             for task in self._tasks:
                 logger.debug('Stopping task %s', task)
-                if self._loop.is_running():
+                if not self._loop.is_running():
                     self._loop.run_until_complete(task)
             del self._tasks[:]
 

@@ -31,6 +31,17 @@ def _background_loop(loop):
         _loop_thread = None
 
 
+def _cleanup(loop=None, *args, **kwargs):
+    context.get_contexts().stop()
+
+    if loop is None:
+        loop = asyncio.get_event_loop()
+
+    loop.stop()
+    if _loop_thread is not None:
+        _loop_thread.join()
+
+
 def blocking_mode(loop=None):
     '''Run the event loop forever (in a background thread)'''
     global _loop_thread
@@ -40,13 +51,8 @@ def blocking_mode(loop=None):
     if loop is None:
         loop = asyncio.get_event_loop()
 
-    def exit_cleanup(*args, **kwargs):
-        ctxh = context.get_contexts()
-        ctxh.stop()
-        loop.stop()
-        _loop_thread.join()
+    atexit.register(functools.partial(_cleanup, loop=loop))
 
-    atexit.register(exit_cleanup)
     _loop_thread = ca.CAThread(target=_background_loop, kwargs=dict(loop=loop),
                                daemon=True)
     try:

@@ -1,7 +1,8 @@
 import pytest
 import logging
 import functools
-from pvasync.sync import (caget, caput, blocking_mode)
+from pvasync.sync import (caget, caput, blocking_mode,
+                          _cleanup)
 
 from . import pvnames
 
@@ -12,6 +13,12 @@ logger.setLevel(logging.DEBUG)
 
 def setup_module(module):
     blocking_mode()
+
+
+def teardown_module(module):
+    if False:
+        cleanup()
+    pass
 
 
 def no_simulator_updates(fcn):
