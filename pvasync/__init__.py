@@ -46,4 +46,4 @@ from .coroutines import (get_ctrlvars, get_timevars,
                          get_timestamp, get_severity, get_precision,
                          get_enum_strings, cainfo)
 
-from .sync import (caget, caput, caget_many)
+from .sync import (caget, caput, caget_many, blocking_mode)

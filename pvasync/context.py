@@ -117,8 +117,8 @@ class MonitorCallback(ChannelCallbackBase):
                      self.pvname, dbr.ChType(self.ftype).name, self.mask,
                      self.evid)
         super().destroy()
-        import gc
-        gc.collect()
+        # import gc
+        # gc.collect()
 
         if self.py_handler_id is not None:
             pass
@@ -317,7 +317,8 @@ class CAContextHandler:
         if self._tasks:
             for task in self._tasks:
                 logger.debug('Stopping task %s', task)
-                self._loop.run_until_complete(task)
+                if self._loop.is_running():
+                    self._loop.run_until_complete(task)
             del self._tasks[:]
 
         for chid, pvname in list(self.channel_to_pv.items()):
@@ -343,6 +344,9 @@ class CAContexts:
         self.add_context()
         atexit.register(self.stop)
 
+    def __iter__(self):
+        yield from self.contexts.items()
+
     def add_context(self, ctx=None):
         if ctx is None:
             ctx = ca.current_context()
@@ -360,6 +364,9 @@ class CAContexts:
         return self.add_context(ctx)
 
     def stop(self):
+        if not self.running:
+            return
+
         self.running = False
 
         for ctx_id, context in list(self.contexts.items()):

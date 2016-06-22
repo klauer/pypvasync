@@ -80,10 +80,10 @@ script:
   - python -c "import pvasync.find_libca; print(pvasync.find_libca.find_libca())"
 
   - echo "Checking if the motor/areadetector IOC is running:"
-  - python -c "import pvasync; print('mtr1', pvasync.caget('sim:mtr1.RBV'))"
-  - python -c "import pvasync; print('arraycounter', pvasync.caget('sim:det:ROI1:ArrayCounter'))"
+  - python -c "import pvasync; pvasync.blocking_mode(); print('mtr1', pvasync.caget('sim:mtr1.RBV'))"
+  - python -c "import pvasync; pvasync.blocking_mode(); print('arraycounter', pvasync.caget('sim:det:ROI1:ArrayCounter'))"
   - echo "Checking if the pypvasync test suite ioc is running:"
-  - python -c "import pvasync; print('long1', pvasync.caget('Py:long1'))"
+  - python -c "import pvasync; pvasync.blocking_mode(); print('long1', pvasync.caget('Py:long1'))"
 
   - caget sim:mtr1.RBV
   - caget sim:det:ROI1:ArrayCounter
