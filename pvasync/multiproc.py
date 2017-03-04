@@ -17,7 +17,6 @@ Channel Access or using Epics process variables
 
 import multiprocessing as mp
 from multiprocessing.pool import Pool
-from .context import get_contexts
 
 
 __all__ = ['CAProcess', 'CAPool']
@@ -34,10 +33,10 @@ class CAProcess(mp.Process):
         super().__init__(**kws)
 
     def run(self):
-        cm = get_contexts()
-        # TODO this is definitely wrong
-        cm.stop()
-        cm.add_context()
+        # cm = get_contexts()
+        # # TODO this is definitely wrong
+        # cm.stop()
+        # cm.add_context()
         super().run()
 
 

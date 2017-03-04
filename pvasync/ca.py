@@ -184,25 +184,6 @@ def attach_context(context):
 
 
 @withCA
-@withSEVCHK
-def use_initial_context():
-    """Attaches to the context created when libca is initialized.
-    Using this function is recommended when writing threaded programs that
-    using CA.
-
-    See Also
-    --------
-    :ref:`advanced-threads-label` in doc for further discussion.
-
-    """
-    global initial_context
-    ret = dbr.ECA.NORMAL
-    if initial_context != current_context():
-        ret = libca.ca_attach_context(initial_context)
-    return ret
-
-
-@withCA
 def detach_context():
     "detach context"
     return libca.ca_detach_context()
@@ -217,15 +198,6 @@ def replace_printf_handler(fcn=None):
         fcn = sys.stderr.write
     error_message = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(fcn)
     return libca.ca_replace_printf_handler(error_message)
-
-
-@withCA
-def current_context():
-    "return the current context"
-    ctx = libca.ca_current_context()
-    if isinstance(ctx, ctypes.c_long):
-        ctx = ctx.value
-    return ctx
 
 
 @withCA
@@ -352,11 +324,4 @@ def clear_subscription(event_id):
 
 
 class CAThread(Thread):
-    """
-    Sub-class of threading.Thread to ensure that the
-    initial CA context is used.
-    """
-
-    def run(self):
-        use_initial_context()
-        super().run()
+    pass

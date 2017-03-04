@@ -1,13 +1,13 @@
-import time
 import asyncio
 import logging
-import atexit
 import queue
 import functools
 import threading
 import ctypes
 import copy
 from functools import partial
+
+import caproto
 
 from . import ca
 from . import dbr
@@ -163,30 +163,73 @@ class MonitorCallback(ChannelCallbackBase):
         return has_req_mask and type_ok
 
 
-def _in_context(func):
-    '''Ensure function is executed in the correct CA context'''
-    @functools.wraps(func)
-    def inner(self, *args, **kwargs):
-        if ca.current_context() != self._ctx:
-            ca.attach_context(self._ctx)
-        return func(self, *args, **kwargs)
+class VcProtocol(asyncio.Protocol):
+    transport = None
 
-    return inner
+    def __init__(self, avc):
+        self.avc = avc
+        self.vc = avc._vc
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def data_received(self, data):
+        print("Received:", data)
+        try:
+            self.vc.recv(data)
+            cmd = None
+            while cmd is not caproto.NEED_DATA:
+                if cmd is not None:
+                    self.avc._received_ca_command(cmd)
+
+                cmd = self.vc.next_command()
+        except Exception as ex:
+            print('receive fail', ex)
+            self.avc._ca_failure(ex)
+            raise
+
+    def connection_lost(self, exc):
+        # The socket has been closed, stop the event loop
+        loop.stop()
 
 
-class CAContextHandler:
+class ClientChannel(caproto.ClientChannel):
+    def state_changed(self, role, old_state, new_state, command=None):
+        if role is caproto.SERVER:
+            return
+
+        print('state changed', role, old_state, new_state,
+              'command was', command)
+        if new_state is caproto.CONNECTED:
+            print('connected! data type is', self.native_data_type,
+                  'count', self.native_data_count)
+
+    def _process_command(self, command):
+        super()._process_command(command)
+
+        print('i can process', command)
+
+
+class AsyncVirtualCircuit:
     # Default mask for subscriptions (means update on value changes exceeding
     # MDEL, and on alarm level changes.) Other option is DBE_LOG for archive
     # changes (ie exceeding ADEL)
     default_mask = (dbr.SubscriptionType.DBE_VALUE |
                     dbr.SubscriptionType.DBE_ALARM)
 
-    def __init__(self, ctx):
+    def __init__(self, hub, host, port, priority=None, loop=None):
+        self._sock = None
         self._sub_lock = threading.RLock()
+        self._connected_event = asyncio.Event()
+        self._hub = hub
+        self._host = host
+        self._port = port
+        self._priority = priority
 
         self._running = True
-        self._ctx = ctx
-        self._loop = asyncio.get_event_loop()
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self._loop = loop
         self._tasks = None
         self._event_queue = queue.Queue()
 
@@ -199,27 +242,81 @@ class CAContextHandler:
         self.ch_monitors = {}
         self.evid = {}
 
+        self._vc = caproto.VirtualCircuit(hub=hub, address=self._host,
+                                          priority=self._priority)
+        self._read_queue = asyncio.Queue()
+        self._write_queue = asyncio.Queue()
+        self._write_event = threading.Event()
+
+        # self._write_request(
+        #     caproto.VersionRequest(version=self._hub.protocol_version,
+        #                            priority=self._priority))
+        self._write_request(caproto.HostNameRequest(caproto.OUR_HOSTNAME[:40]))
+        self._write_request(caproto.ClientNameRequest(caproto.OUR_USERNAME))
+
+        self._futures = [
+            asyncio.run_coroutine_threadsafe(self._connect(host, port),
+                                             self._loop),
+            asyncio.run_coroutine_threadsafe(self._write_queue_loop(),
+                                             self._loop),
+            ]
+
+    def _write_request(self, command):
+        with self._sub_lock:
+            if not isinstance(command, (tuple, list)):
+                command = [command]
+
+            self._write_queue.put_nowait(tuple(command))
+
+    async def _write_queue_loop(self):
+        await self._connected_event.wait()
+        while True:
+            data = await self._write_queue.get()
+            print('[writequeue]', data)
+            to_send = self._vc.send(*data)
+            self._sock.transport.write(to_send)
+
+    def _received_ca_command(self, event):
+        print('received ca event', event)
+        self._read_queue.put_nowait(event)
+
+    def _ca_failure(self, ex):
+        print('!! ca state failure', ex)
+
+    async def _connect(self, host, port):
+        loop = self._loop
+
+        # # TODO server sends version reply unsolicited!
+        # self._vc.send(caproto.VersionRequest(version=self._hub.protocol_version,
+        #                                      priority=self._priority))
+        self._proto, self._sock = await loop.create_connection(lambda:
+                                                               VcProtocol(self),
+                                                               host, port)
+
+        print('--- connected ---', self._sock)
+        self._connected_event.set()
+        print('--- connected set ---')
+
     def add_event(self, type_, info):
         self._event_queue.put((type_, info), block=False)
 
-    def create_channel(self, pvname, *, callback=None):
+    async def create_channel(self, pvname, *, callback=None):
         try:
             return self.pv_to_channel[pvname]
         except KeyError:
             pass
 
         with self._sub_lock:
-            chid = dbr.chid_t()
-            ret = ca.libca.ca_create_channel(pvname.encode('ascii'),
-                                             _on_connection_event.ca_callback,
-                                             0, 0, ctypes.byref(chid))
-
-            ca.PySEVCHK('create_channel', ret)
-
-            chid = ca.channel_id_to_int(chid)
+            # await self._connected_event.wait()
+            channel = ClientChannel(self._hub, pvname, address=self._host,
+                                    priority=self._priority)
+            chid = channel.cid
+            self._vc.channels[chid] = channel
 
             self.channel_to_pv[chid] = pvname
-            self.pv_to_channel[pvname] = chid
+            self.pv_to_channel[pvname] = channel
+
+            self._write_request(channel.create()[1:])
 
             if callback is not None:
                 self.subscribe(sig='connection', chid=chid, func=callback,
@@ -251,15 +348,13 @@ class CAContextHandler:
         self._cbreg.unsubscribe(cid)
 
     def _queue_loop(self, q):
-        ca.attach_context(self._ctx)
         while self._running:
             try:
                 yield q.get(block=True, timeout=0.1)
             except queue.Empty:
                 pass
 
-    @asyncio.coroutine
-    def connect_channel(self, chid, timeout=1.0):
+    async def connect_channel(self, chid, timeout=1.0):
         loop = self._loop
         fut = asyncio.Future()
 
@@ -278,7 +373,7 @@ class CAContextHandler:
         self.subscribe(sig='connection', chid=chid, func=connection_update,
                        oneshot=True)
 
-        yield from asyncio.wait_for(fut, timeout=timeout)
+        await asyncio.wait_for(fut, timeout=timeout)
 
     def _event_queue_loop(self):
         loop = self._loop
@@ -291,26 +386,11 @@ class CAContextHandler:
                                                   pvname=pvname,
                                                   **info))
 
-    @_in_context
-    def _poll_thread(self):
-        '''Poll context ctx in an executor thread'''
-        try:
-            logger.debug('Event poll thread starting', self)
-            while self._running:
-                ca.pend_event(1.e-5)
-                ca.pend_io(1.0)
-        finally:
-            ca.flush_io()
-            ca.detach_context()
-            logger.debug('%s event poll thread exiting', self)
-
     def start(self):
         loop = self._loop
-        self._tasks = [loop.run_in_executor(None, self._poll_thread),
-                       loop.run_in_executor(None, self._event_queue_loop),
+        self._tasks = [loop.run_in_executor(None, self._event_queue_loop),
                        ]
 
-    @_in_context
     def stop(self):
         self._running = False
 
@@ -325,77 +405,11 @@ class CAContextHandler:
             logger.debug('Destroying channel %s (%d)', pvname, chid)
             self.clear_channel(pvname)
 
-        ca.flush_io()
-        ca.detach_context()
-
-    def __del__(self):
-        self.stop()
-
-
-class CAContexts:
-    def __init__(self):
-        if hasattr(CAContexts, 'instance'):
-            raise RuntimeError('CAContexts is a singleton')
-
-        CAContexts.instance = self
-
-        self.running = True
-        self.contexts = {}
-        self.add_context()
-        atexit.register(self.stop)
-
-    def __iter__(self):
-        yield from self.contexts.items()
-
-    def add_context(self, ctx=None):
-        if ctx is None:
-            ctx = ca.current_context()
-
-        ctx_id = int(ctx)
-        if ctx_id in self.contexts:
-            return self.contexts[ctx_id]
-
-        handler = CAContextHandler(ctx=ctx)
-        self.contexts[ctx_id] = handler
-        handler.start()
-        return handler
-
-    def __getitem__(self, ctx):
-        return self.add_context(ctx)
-
-    def stop(self):
-        if not self.running:
-            return
-
-        self.running = False
-
-        for ctx_id, context in list(self.contexts.items()):
-            context.stop()
-            del self.contexts[ctx_id]
-
-        # # old finalize ca had multiple flush and wait...
         # ca.flush_io()
         # ca.detach_context()
 
-    def add_event(self, ctx, event_type, info):
-        if not self.running:
-            return
-
-        ctx_id = int(ctx)
-        self.contexts[ctx_id].add_event(event_type, info)
-
-
-def get_contexts():
-    '''The global context handler'''
-    global _cm
-    return _cm
-
-
-def get_current_context():
-    return _cm[None]
-
-
-_cm = CAContexts()
+    def __del__(self):
+        self.stop()
 
 
 def _make_callback(func, args):
@@ -489,3 +503,10 @@ def _on_put_event(args, **kwds):
         loop.call_soon_threadsafe(future.set_result, True)
 
     # ctypes.pythonapi.Py_DecRef(args.usr)
+
+
+client_hub = caproto.Hub(our_role=caproto.CLIENT)
+context = AsyncVirtualCircuit(client_hub, '127.0.0.1', 5064, priority=0)
+
+def get_current_context():
+    return context
