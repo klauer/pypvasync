@@ -122,6 +122,7 @@ class PV(object):
                  monitor_mask=None):
 
         self._context = get_current_context()
+        self._connect_event = asyncio.Event()
         self.monitor_mask = monitor_mask
         self.pvname = pvname.strip()
         self.form = form.lower()
@@ -201,11 +202,11 @@ class PV(object):
                                      use_time=use_time)
 
             ctx = self._context
-            handler, cbid = ctx.subscribe(sig='monitor',
-                                          func=self._monitor_update,
-                                          chid=self.chid, ftype=ptype,
-                                          mask=mask)
-            self._mon_cbid = cbid
+            # handler, cbid = ctx.subscribe(sig='monitor',
+            #                               func=self._monitor_update,
+            #                               chid=self.chid, ftype=ptype,
+            #                               mask=mask)
+            # self._mon_cbid = cbid
 
         self._update_connection_status(connected=True)
 
@@ -220,10 +221,15 @@ class PV(object):
             # waiting until the very end until to set self.connected prevents
             # threads from thinking a connection is complete when it is
             # actually still in progress.
+
+            if connected:
+                self._connect_event.set()
+            else:
+                self._connect_event.clear()
+
             self.connected = connected
 
-    @asyncio.coroutine
-    def wait_for_connection(self, timeout=None):
+    async def wait_for_connection(self, timeout=None):
         """wait for a connection that started with connect() to finish"""
 
         if self.connected:
@@ -232,7 +238,7 @@ class PV(object):
         if timeout is None:
             timeout = self.connection_timeout
 
-        yield from self._context.connect_channel(self.chid, timeout=timeout)
+        await asyncio.wait_for(self._connect_event.wait(), timeout=timeout)
         return True
 
     @asyncio.coroutine

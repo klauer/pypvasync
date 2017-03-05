@@ -170,7 +170,7 @@ class VcProtocol(asyncio.Protocol):
 
                 cmd = self.vc.next_command()
         except Exception as ex:
-            print('receive fail', ex)
+            print('receive fail', type(ex), ex)
             self.avc._ca_failure(ex)
             raise
 
