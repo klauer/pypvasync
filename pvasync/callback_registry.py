@@ -5,9 +5,6 @@ import functools
 
 from collections import OrderedDict
 
-from . import ca
-from . import dbr
-
 
 logger = logging.getLogger(__name__)
 loop = asyncio.get_event_loop()

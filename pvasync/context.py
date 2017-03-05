@@ -8,9 +8,8 @@ import copy
 from functools import partial
 
 import caproto
+from caproto import _dbr as dbr
 
-from . import ca
-from . import dbr
 from . import utils
 from . import cast
 from . import errors
@@ -118,7 +117,7 @@ class MonitorCallback(ChannelCallbackBase):
         # gc.collect()
 
         if self.evid is not None:
-            ret = ca.clear_subscription(self.evid)
+            ret = clear_subscription(self.evid)
 
             self.evid = None
 
@@ -400,9 +399,6 @@ class AsyncVirtualCircuit:
             logger.debug('Destroying channel %s (%d)', pvname, chid)
             self.clear_channel(pvname)
 
-        # ca.flush_io()
-        # ca.detach_context()
-
     def __del__(self):
         self.stop()
 
@@ -427,28 +423,18 @@ def _make_callback(func, args):
 
 def ca_callback_event(fcn):
     '''Decorator which creates a ctypes callback function for events'''
-    @functools.wraps(fcn)
-    def wrapped(args):
-        try:
-            return fcn(args)
-        except Exception as ex:
-            logger.error('Exception in libca callback',
-                         exc_info=ex)
-
-    fcn.ca_callback = _make_callback(wrapped, dbr.EventHandlerArgs)
     return fcn
 
 
 def ca_connection_callback(fcn):
     '''Decorator which creates a ctypes callback function for connections'''
-    fcn.ca_callback = _make_callback(fcn, dbr.ConnectionArgs)
     return fcn
 
 
 @ca_connection_callback
 def _on_connection_event(args):
     global _cm
-    _cm.add_event(ca.current_context(), 'connection',
+    _cm.add_event(current_context(), 'connection',
                   args.to_dict())
 
 
@@ -456,7 +442,7 @@ def _on_connection_event(args):
 def _on_monitor_event(args):
     global _cm
 
-    ctx = ca.current_context()
+    ctx = current_context()
     args = cast.cast_monitor_args(args)
     _cm.add_event(ctx, 'monitor', args)
 

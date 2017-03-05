@@ -5,12 +5,9 @@ import ctypes.util
 from math import log10
 from functools import partial
 
-from . import ca
-from . import dbr
 from . import config
 from . import context
 from . import cast
-from .ca import (PySEVCHK, withConnectedCHID)
 
 _pending_futures = {}
 loop = asyncio.get_event_loop()
@@ -41,7 +38,6 @@ class CAFuture(asyncio.Future):
         #     print(i, '\t', info)
 
 
-@withConnectedCHID
 @asyncio.coroutine
 def put(chid, value, timeout=30, callback=None, callback_data=None):
     """sets the Channel to a value, with options to either wait (block) for the
@@ -79,7 +75,6 @@ def put(chid, value, timeout=30, callback=None, callback_data=None):
     return ret
 
 
-@withConnectedCHID
 def get_ctrlvars(chid, timeout=5.0):
     """return the CTRL fields for a Channel.
 
@@ -118,7 +113,6 @@ def get_ctrlvars(chid, timeout=5.0):
     return ctrl_val.to_dict()
 
 
-@ca.withConnectedCHID
 @asyncio.coroutine
 def get_timevars(chid, timeout=5.0):
     """returns a dictionary of TIME fields for a Channel.

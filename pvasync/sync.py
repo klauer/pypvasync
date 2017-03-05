@@ -2,7 +2,7 @@ import asyncio
 import functools
 import atexit
 
-from . import (ca, coroutines, context)
+from . import (coroutines, context)
 
 
 def blocking_wrapper(coroutine):

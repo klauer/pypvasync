@@ -2,11 +2,9 @@ import ctypes
 import ctypes.util
 
 import numpy
-from . import dbr
-from .dbr import native_type
-from .ca import withConnectedCHID
+from caproto import native_type, ChannelType
+
 from .errors import ChannelAccessException
-from .dbr import ChannelType
 from .utils import decode_bytes
 
 
@@ -97,7 +95,6 @@ def get_string_put_info(count, value, encoding='latin-1'):
     return ChannelType.STRING, count, data
 
 
-@withConnectedCHID
 def get_put_info(chid, value, encoding='latin-1'):
     ftype = field_type(chid)
     nativecount = element_count(chid)

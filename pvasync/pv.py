@@ -13,14 +13,11 @@ import asyncio
 from math import log10
 import numpy as np
 import caproto
+from caproto import ChannelType
 
-from . import ca
-from . import cast
-from . import dbr
 from . import config
 from .context import get_current_context, AsyncClientChannel
 from . import coroutines
-from .dbr import ChannelType
 from .utils import format_time
 from .sync import blocking_wrapper
 
@@ -188,7 +185,8 @@ class PVClientChannel(AsyncClientChannel):
     async def get_enum_strings(self):
         """return list of names for ENUM states of a Channel.  Returns
         None for non-ENUM Channels"""
-        if dbr.native_type[self.native_data_type] not in dbr.enum_types:
+        if (caproto.native_type[self.native_data_type] not in
+                caproto.enum_types):
             raise ValueError('Not an enum type')
 
         info = await self.get_ctrlvars()
@@ -200,10 +198,10 @@ class PVClientChannel(AsyncClientChannel):
         This is a coroutine since it may hit channel access to get the enum
         string
         '''
-        raise NotImplementedError()
-        if (ftype in dbr.char_types and count < config.AUTOMONITOR_MAXLENGTH):
+        if (ftype in caproto.char_types
+                and count < config.AUTOMONITOR_MAXLENGTH):
             val = ''.join(chr(i) for i in val if i > 0).rstrip()
-        elif ftype == dbr.ChannelType.ENUM and count == 1:
+        elif ftype == ChannelType.ENUM and count == 1:
             val = await self.get_enum_strings()[val]
         elif count > 1:
             val = '<array count=%d, type=%d>' % (count, ftype)
@@ -295,9 +293,9 @@ class PV(object):
         if access_rights is None:
             access_rights = 0
 
-        self.ftype = dbr.promote_type(native_type,
-                                      use_ctrl=(self.form == 'ctrl'),
-                                      use_time=(self.form == 'time'))
+        self.ftype = caproto.promote_type(native_type,
+                                          use_ctrl=(self.form == 'ctrl'),
+                                          use_time=(self.form == 'time'))
 
         ftype_name = ChannelType(self.ftype).name.lower()
 
@@ -326,8 +324,8 @@ class PV(object):
             mask = self.monitor_mask
             use_ctrl = (self.form == 'ctrl')
             use_time = (self.form == 'time')
-            ptype = dbr.promote_type(self.ftype, use_ctrl=use_ctrl,
-                                     use_time=use_time)
+            ptype = caproto.promote_type(self.ftype, use_ctrl=use_ctrl,
+                                         use_time=use_time)
 
             ctx = self._context
             # handler, cbid = ctx.subscribe(sig='monitor',
@@ -442,7 +440,7 @@ class PV(object):
         """
         yield from self.wait_for_connection()
 
-        if self.ftype in dbr.enum_types and isinstance(value, str):
+        if self.ftype in caproto.enum_types and isinstance(value, str):
             enum_strs = self._args['enum_strs']
             if enum_strs is None:
                 ctrlvars = yield from self.get_ctrlvars()
@@ -475,12 +473,12 @@ class PV(object):
             self._args['char_value'] = 'None'
             return 'None'
         ftype = self._args['ftype']
-        ntype = dbr.native_type(ftype)
-        if ntype == dbr.ChType.STRING:
+        ntype = caproto.native_type(ftype)
+        if ntype == ChannelType.STRING:
             self._args['char_value'] = val
             return val
         # char waveform as string
-        if ntype == dbr.ChType.CHAR and self.count < config.AUTOMONITOR_MAXLENGTH:
+        if ntype == ChannelType.CHAR and self.count < config.AUTOMONITOR_MAXLENGTH:
             if isinstance(val, np.ndarray):
                 val = val.tolist()
             elif self.count == 1:  # handles single character in waveform
@@ -501,7 +499,7 @@ class PV(object):
         if self.count > 1:
             typename = ChannelType(ftype).name.lower()
             cval = '<array size=%d, type=%s>' % (len(val), typename)
-        elif ntype in dbr.native_float_types:
+        elif ntype in caproto.native_float_types:
             if call_ca and self._args['precision'] is None:
                 self.get_ctrlvars()
                 raise NotImplementedError()
