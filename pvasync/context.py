@@ -1,17 +1,15 @@
 import asyncio
 import logging
 import queue
-import functools
 import threading
 import ctypes
-import copy
 from functools import partial
+from math import log10
 
 import caproto
 from caproto import _dbr as dbr
 
-from . import utils
-from . import errors
+from . import config
 from .callback_registry import (ChannelCallbackRegistry, ChannelCallbackBase,
                                 _locked as _cb_locked)
 
@@ -178,16 +176,153 @@ class VcProtocol(asyncio.Protocol):
 
 
 class AsyncClientChannel(caproto.ClientChannel):
-    pass
-    # def state_changed(self, role, old_state, new_state, command=None):
-    #     if role is caproto.SERVER:
-    #         return
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.connected = False
+        self.access_rights = None
+        self._ioid_to_future = {}
+        # TODO this is confusing to have two
+        self.async_vc = self.circuit.async_vc
 
-    #     print('state changed', role, old_state, new_state,
-    #           'command was', command)
-    #     if new_state is caproto.CONNECTED:
-    #         print('connected! data type is', self.native_data_type,
-    #               'count', self.native_data_count)
+    def state_changed(self, role, old_state, new_state, command=None):
+        super().state_changed(role, old_state, new_state, command=command)
+
+        if role is caproto.SERVER:
+            return
+
+        print(old_state, '->', new_state, type(command))
+        if new_state is caproto.CONNECTED:
+            self.connected = True
+        elif new_state is caproto.MUST_CLOSE:
+            self.connected = False
+
+    def _process_command(self, command):
+        super()._process_command(command)
+
+        print('--CH-- process', command)
+        if isinstance(command, caproto.AccessRightsResponse):
+            self.access_rights = command.access_rights
+        elif isinstance(command, caproto.ReadNotifyResponse):
+            # ReadNotifyResponse(values=<caproto._dbr.DBR_DOUBLE object at
+            # 0x109c0a510>, data_type=6, data_count=1, status=1, ioid=0)
+            try:
+                future = self._ioid_to_future[command.ioid]
+            except KeyError:
+                print('cancelled io request')
+            else:
+                future.set_result(command)
+
+    def _init_io_operation(self):
+        ioid = self.circuit.new_ioid()
+        future = asyncio.Future()
+        self._ioid_to_future[ioid] = future
+        return ioid, future
+
+    async def _wait_io_operation(self, ioid, future, timeout):
+        try:
+            data = await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise
+        finally:
+            del self._ioid_to_future[ioid]
+        return data
+
+    async def get(self, ftype=None, count=None, timeout=None, as_string=False,
+                  as_numpy=True):
+        """Return the current value for a channel.
+        Note that there is not a separate form for array data.
+
+        Parameters
+        ----------
+        ftype : int
+           field type to use (native type is default)
+        count : int
+           maximum element count to return (full data returned by default)
+        as_string : bool
+           whether to return the string representation of the value.
+           See notes below.
+        as_numpy : bool
+           whether to return the Numerical Python representation
+           for array / waveform data.
+        timeout : float
+            maximum time to wait for data before returning ``None``.
+
+        Returns
+        -------
+        data : object
+
+        Notes
+        -----
+        1. Returning ``None`` indicates an *incomplete get*
+
+        2. The *as_string* option is not as complete as the *as_string*
+        argument for :meth:`PV.get`.  For Enum types, the name of the Enum
+        state will be returned.  For waveforms of type CHAR, the string
+        representation will be returned.  For other waveforms (with *count* >
+        1), a string like `<array count=3, type=1>` will be returned.
+
+        3. The *as_numpy* option will convert waveform data to be returned as a
+        numpy array.  This is only applied if numpy can be imported.
+
+        4. The *timeout* option sets the maximum time to wait for the data to
+        be received over the network before returning ``None``.  Such a timeout
+        could imply that the channel is disconnected or that the data size is
+        larger or network slower than normal.  In that case, the *get*
+        operation is said to be *incomplete*, and the data may become available
+        later with :func:`get_complete`.
+
+        """
+        if count is not None:
+            count = min(count, self.native_data_count)
+
+        ftype, count = self._fill_defaults(ftype, count)
+        ioid, future = self._init_io_operation()
+
+        command = caproto.ReadNotifyRequest(ftype, count, self.sid, ioid)
+        self.async_vc._write_request(command)
+
+        if timeout is None:
+            timeout = 1.0 + log10(max(1, count))
+
+        data = await self._wait_io_operation(ioid, future, timeout)
+
+        unpacked = data.values
+
+        if as_string:
+            try:
+                unpacked = await self._as_string(unpacked, count, ftype)
+            except ValueError:
+                pass
+
+        return unpacked
+
+    async def get_enum_strings(self):
+        """return list of names for ENUM states of a Channel.  Returns
+        None for non-ENUM Channels"""
+        if (caproto.native_type[self.native_data_type] not in
+                caproto.enum_types):
+            raise ValueError('Not an enum type')
+
+        info = await self.get_ctrlvars()
+        return info.get('enum_strs', None)
+
+    async def _as_string(self, val, count, ftype):
+        '''primitive conversion of value to a string
+
+        This is a coroutine since it may hit channel access to get the enum
+        string
+        '''
+        if (ftype in caproto.char_types
+                and count < config.AUTOMONITOR_MAXLENGTH):
+            val = ''.join(chr(i) for i in val if i > 0).rstrip()
+        elif ftype == ChannelType.ENUM and count == 1:
+            val = await self.get_enum_strings()[val]
+        elif count > 1:
+            val = '<array count=%d, type=%d>' % (count, ftype)
+
+        val = str(val)
+        return val
 
 
 class AsyncVirtualCircuit:
@@ -400,89 +535,6 @@ class AsyncVirtualCircuit:
 
     def __del__(self):
         self.stop()
-
-
-def _make_callback(func, args):
-    """Make a ctypes callback function
-
-    Works a bit differently on Windows Python x64
-    """
-    if utils.PY64_WINDOWS:
-        # note that ctypes.POINTER is needed for 64-bit Python on Windows
-        args = ctypes.POINTER(args)
-
-        @wraps(func)
-        def wrapped(args):
-            # for 64-bit python on Windows!
-            return func(args.contents)
-        return ctypes.CFUNCTYPE(None, args)(wrapped)
-    else:
-        return ctypes.CFUNCTYPE(None, args)(func)
-
-
-def ca_callback_event(fcn):
-    '''Decorator which creates a ctypes callback function for events'''
-    return fcn
-
-
-def ca_connection_callback(fcn):
-    '''Decorator which creates a ctypes callback function for connections'''
-    return fcn
-
-
-@ca_connection_callback
-def _on_connection_event(args):
-    global _cm
-    _cm.add_event(current_context(), 'connection',
-                  args.to_dict())
-
-
-@ca_callback_event
-def _on_monitor_event(args):
-    global _cm
-
-    ctx = current_context()
-    args = cast.cast_monitor_args(args)
-    _cm.add_event(ctx, 'monitor', args)
-
-
-@ca_callback_event
-def _on_get_event(args):
-    """get_callback event: simply store data contents which will need
-    conversion to python data with _unpack()."""
-    future = args.usr
-    future.ca_callback_done()
-
-    # print("GET EVENT: chid, user ", args.chid, future, hash(future))
-    # print("           type, count ", args.type, args.count)
-    # print("           status ", args.status, dbr.ECA.NORMAL)
-
-    if future.done() or future.cancelled():
-        pass
-    elif args.status != dbr.ECA.NORMAL:
-        # TODO look up in appdev manual
-        ex = errors.CASeverityException('get', str(args.status))
-        loop.call_soon_threadsafe(future.set_exception, ex)
-    else:
-        data = copy.deepcopy(cast.cast_args(args))
-        loop.call_soon_threadsafe(future.set_result, data)
-
-    # TODO
-    # ctypes.pythonapi.Py_DecRef(args.usr)
-
-
-@ca_callback_event
-def _on_put_event(args, **kwds):
-    """set put-has-completed for this channel"""
-    future = args.usr
-    future.ca_callback_done()
-
-    if future.done():
-        pass
-    elif not future.cancelled():
-        loop.call_soon_threadsafe(future.set_result, True)
-
-    # ctypes.pythonapi.Py_DecRef(args.usr)
 
 
 client_hub = caproto.Hub(our_role=caproto.CLIENT)

@@ -57,12 +57,7 @@ def get_pv(pvname, form='time', connect=False, context=None, timeout=5.0,
 class PVClientChannel(AsyncClientChannel):
     def __init__(self, *, pv_instance, **kwargs):
         super().__init__(**kwargs)
-        self.connected = False
         self.pv = pv_instance
-        self.access_rights = None
-        self._ioid_to_future = {}
-        # TODO this is confusing to have two
-        self.async_vc = self.circuit.async_vc
 
     def state_changed(self, role, old_state, new_state, command=None):
         super().state_changed(role, old_state, new_state, command=command)
@@ -70,145 +65,13 @@ class PVClientChannel(AsyncClientChannel):
         if role is caproto.SERVER:
             return
 
-        print(old_state, '->', new_state, type(command))
         if new_state is caproto.CONNECTED:
-            self.connected = True
             self.pv._on_connect(element_count=self.native_data_count,
                                 native_type=self.native_data_type,
                                 access_rights=self.access_rights,
                                 host=self.circuit.host)
         elif new_state is caproto.MUST_CLOSE:
-            self.connected = False
             self.pv._on_disconnect(deleted=False)
-
-    def _process_command(self, command):
-        super()._process_command(command)
-
-        print('--CH-- process', command)
-        if isinstance(command, caproto.AccessRightsResponse):
-            self.access_rights = command.access_rights
-        elif isinstance(command, caproto.ReadNotifyResponse):
-            # ReadNotifyResponse(values=<caproto._dbr.DBR_DOUBLE object at
-            # 0x109c0a510>, data_type=6, data_count=1, status=1, ioid=0)
-            try:
-                future = self._ioid_to_future[command.ioid]
-            except KeyError:
-                print('cancelled io request')
-            else:
-                future.set_result(command)
-
-    def _init_io_operation(self):
-        ioid = self.circuit.new_ioid()
-        future = asyncio.Future()
-        self._ioid_to_future[ioid] = future
-        return ioid, future
-
-    async def _wait_io_operation(self, ioid, future, timeout):
-        try:
-            data = await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
-            future.cancel()
-            raise
-        finally:
-            del self._ioid_to_future[ioid]
-        return data
-
-    async def get(self, ftype=None, count=None, timeout=None, as_string=False,
-                  as_numpy=True):
-        """Return the current value for a channel.
-        Note that there is not a separate form for array data.
-
-        Parameters
-        ----------
-        ftype : int
-           field type to use (native type is default)
-        count : int
-           maximum element count to return (full data returned by default)
-        as_string : bool
-           whether to return the string representation of the value.
-           See notes below.
-        as_numpy : bool
-           whether to return the Numerical Python representation
-           for array / waveform data.
-        timeout : float
-            maximum time to wait for data before returning ``None``.
-
-        Returns
-        -------
-        data : object
-
-        Notes
-        -----
-        1. Returning ``None`` indicates an *incomplete get*
-
-        2. The *as_string* option is not as complete as the *as_string*
-        argument for :meth:`PV.get`.  For Enum types, the name of the Enum
-        state will be returned.  For waveforms of type CHAR, the string
-        representation will be returned.  For other waveforms (with *count* >
-        1), a string like `<array count=3, type=1>` will be returned.
-
-        3. The *as_numpy* option will convert waveform data to be returned as a
-        numpy array.  This is only applied if numpy can be imported.
-
-        4. The *timeout* option sets the maximum time to wait for the data to
-        be received over the network before returning ``None``.  Such a timeout
-        could imply that the channel is disconnected or that the data size is
-        larger or network slower than normal.  In that case, the *get*
-        operation is said to be *incomplete*, and the data may become available
-        later with :func:`get_complete`.
-
-        """
-        if count is not None:
-            count = min(count, self.native_data_count)
-
-        ftype, count = self._fill_defaults(ftype, count)
-        ioid, future = self._init_io_operation()
-
-        command = caproto.ReadNotifyRequest(ftype, count, self.sid, ioid)
-        self.async_vc._write_request(command)
-
-        if timeout is None:
-            timeout = 1.0 + log10(max(1, count))
-
-        data = await self._wait_io_operation(ioid, future, timeout)
-
-        unpacked = data.values
-
-        if as_string:
-            try:
-                unpacked = await self._as_string(unpacked, count, ftype)
-            except ValueError:
-                pass
-
-        return unpacked
-
-    async def get_enum_strings(self):
-        """return list of names for ENUM states of a Channel.  Returns
-        None for non-ENUM Channels"""
-        if (caproto.native_type[self.native_data_type] not in
-                caproto.enum_types):
-            raise ValueError('Not an enum type')
-
-        info = await self.get_ctrlvars()
-        return info.get('enum_strs', None)
-
-    async def _as_string(self, val, count, ftype):
-        '''primitive conversion of value to a string
-
-        This is a coroutine since it may hit channel access to get the enum
-        string
-        '''
-        if (ftype in caproto.char_types
-                and count < config.AUTOMONITOR_MAXLENGTH):
-            val = ''.join(chr(i) for i in val if i > 0).rstrip()
-        elif ftype == ChannelType.ENUM and count == 1:
-            val = await self.get_enum_strings()[val]
-        elif count > 1:
-            val = '<array count=%d, type=%d>' % (count, ftype)
-
-        val = str(val)
-        return val
-
 
 
 class PV(object):
