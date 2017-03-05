@@ -144,14 +144,6 @@ def access(chid):
     return ('no access', 'read-only', 'write-only', 'read/write')[acc]
 
 
-def channel_id_to_int(chid):
-    '''Get an integer from a channel ID (from dbr.chid_t)'''
-    if isinstance(chid, dbr.chid_t):
-        chid = chid.value
-
-    return int(chid)
-
-
 @withCA
 @withSEVCHK
 def context_create(ctx=None):

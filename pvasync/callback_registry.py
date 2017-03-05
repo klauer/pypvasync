@@ -28,7 +28,7 @@ class ChannelCallbackBase:
 
     def __init__(self, registry, chid):
         self.registry = registry
-        self.chid = ca.channel_id_to_int(chid)
+        self.chid = chid
         self.handler_id = None
 
         self.context = registry.context
@@ -117,7 +117,6 @@ class ChannelCallbackRegistry:
 
         self._cbid += 1
         cbid = self._cbid
-        chid = ca.channel_id_to_int(chid)
 
         if chid not in self.handlers_by_chid:
             self.handlers_by_chid[chid] = {sig: []

@@ -178,11 +178,13 @@ class PV(object):
 
         ftype_name = ChannelType(self.ftype).name.lower()
 
+        access_str = (('no access', 'read-only', 'write-only',
+                       'read/write')[access_rights])
         self._args.update(
             count=element_count,
             nelm=element_count,
             host=host,
-            access=access_rights,
+            access=access_str,
             # TODO upstream somewhere?
             read_access=((access_rights & 1) == 1),
             write_access=((access_rights & 2) == 2),
