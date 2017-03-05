@@ -228,6 +228,31 @@ class AsyncClientChannel(caproto.ClientChannel):
             del self._ioid_to_future[ioid]
         return data
 
+    async def get_ctrlvars(self, timeout=5.0):
+        """return the CTRL fields for a Channel.
+
+        Depending on the native type, the keys may include
+            *status*, *severity*, *precision*, *units*, enum_strs*,
+            *upper_disp_limit*, *lower_disp_limit*, upper_alarm_limit*,
+            *lower_alarm_limit*, *upper_warning_limit*, *lower_warning_limit*,
+            *upper_ctrl_limit*, *lower_ctrl_limit*
+
+        Notes
+        -----
+        enum_strs will be a list of strings for the names of ENUM states.
+
+        """
+        ftype = dbr.promote_type(self.native_data_type, use_ctrl=True)
+        ioid, future = self._init_io_operation()
+
+        command = caproto.ReadNotifyRequest(ftype, 1, self.sid, ioid)
+        self.async_vc._write_request(command)
+
+        response = await self._wait_io_operation(ioid, future, timeout)
+        info = response.values
+        return dict((name, getattr(info, name))
+                    for name in info._fields)
+
     async def get(self, ftype=None, count=None, timeout=None, as_string=False,
                   as_numpy=True):
         """Return the current value for a channel.

@@ -49,44 +49,6 @@ def put(chid, value, timeout=30, callback=None, callback_data=None):
     return ret
 
 
-def get_ctrlvars(chid, timeout=5.0):
-    """return the CTRL fields for a Channel.
-
-    Depending on the native type, the keys may include
-        *status*, *severity*, *precision*, *units*, enum_strs*,
-        *upper_disp_limit*, *lower_disp_limit*, upper_alarm_limit*,
-        *lower_alarm_limit*, upper_warning_limit*, *lower_warning_limit*,
-        *upper_ctrl_limit*, *lower_ctrl_limit*
-
-    Notes
-    -----
-    enum_strs will be a list of strings for the names of ENUM states.
-
-    """
-    global _cache
-
-    future = CAFuture()
-    ftype = dbr.promote_type(ca.field_type(chid), use_ctrl=True)
-
-    ret = ca.libca.ca_array_get_callback(ftype, 1, chid,
-                                         context._on_get_event.ca_callback,
-                                         future.py_object)
-
-    PySEVCHK('get_ctrlvars', ret)
-
-    try:
-        ctrl_val, nval = yield from asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError:
-        future.cancel()
-        raise
-
-    if not isinstance(ctrl_val, dbr.ControlTypeBase):
-        raise RuntimeError('Got back a non-ControlType struct. '
-                           'Type: {}'.format(type(ctrl_val)))
-
-    return ctrl_val.to_dict()
-
-
 @asyncio.coroutine
 def get_timevars(chid, timeout=5.0):
     """returns a dictionary of TIME fields for a Channel.

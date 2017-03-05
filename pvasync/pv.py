@@ -388,7 +388,7 @@ class PV(object):
     async def get_ctrlvars(self, timeout=5):
         "get control values for variable"
         await self.wait_for_connection(timeout=timeout)
-        kwds = await coroutines.get_ctrlvars(self.chid, timeout=timeout)
+        kwds = await self.channel.get_ctrlvars(timeout=timeout)
         self._args.update(kwds)
         return kwds
 
@@ -460,7 +460,7 @@ class PV(object):
             self.callbacks[index] = (callback, kw)
 
         if with_ctrlvars and self.connected:
-            self.get_ctrlvars()  # <-- TODO coroutine
+            await self.get_ctrlvars()  # <-- TODO coroutine
         if run_now:
             self.get(as_string=True)
             if self.connected:
