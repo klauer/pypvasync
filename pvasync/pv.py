@@ -9,6 +9,7 @@
 import time
 import copy
 import asyncio
+import functools
 
 from math import log10
 import numpy as np
@@ -294,11 +295,13 @@ class PV(object):
             val = val[:count]
         return val
 
-    async def aput(self, value, timeout=30.0, use_complete=False,
-                   callback=None, callback_data=None):
-        """set value for PV, optionally waiting until the processing is
-        complete, and optionally specifying a callback function to be run
-        when the processing is complete.
+    async def aput(self, value, timeout=30.0, callback=None,
+                   callback_data=None):
+        """set value for PV
+
+        Optionally waiting until the processing is complete, and optionally
+        specifying a callback function to be run when the processing is
+        complete.
         """
         await self.wait_for_connection()
 
@@ -306,7 +309,7 @@ class PV(object):
             enum_strs = self._args['enum_strs']
             if enum_strs is None:
                 ctrlvars = await self.get_ctrlvars()
-                enum_strs = ctrlvars['enum_strs']
+                enum_strs = ctrlvars.enum_strs
 
             if value in self._args['enum_strs']:
                 # tuple.index() not supported in python2.5
@@ -315,10 +318,14 @@ class PV(object):
                     if val == value:
                         value = ival
                         break
-        if use_complete and callback is None:
-            callback = self._put_callback
-        await coroutines.put(self.chid, value, timeout=timeout,
-                             callback=callback, callback_data=callback_data)
+
+        fut = self.channel.put(value, timeout=timeout)
+
+        if callable(callback):
+            fut.add_done_callback(functools.partial(callback,
+                                                    data=callback_data))
+
+        await fut
 
     get = blocking_wrapper(aget)
     put = blocking_wrapper(aput)

@@ -202,7 +202,8 @@ class AsyncClientChannel(caproto.ClientChannel):
         print('--CH-- process', command)
         if isinstance(command, caproto.AccessRightsResponse):
             self.access_rights = command.access_rights
-        elif isinstance(command, caproto.ReadNotifyResponse):
+        elif isinstance(command, (caproto.ReadNotifyResponse,
+                                  caproto.WriteNotifyResponse)):
             # ReadNotifyResponse(values=<caproto._dbr.DBR_DOUBLE object at
             # 0x109c0a510>, data_type=6, data_count=1, status=1, ioid=0)
             try:
@@ -253,6 +254,24 @@ class AsyncClientChannel(caproto.ClientChannel):
         ftype = dbr.promote_type(self.native_data_type, use_time=True)
         info = await self.get(ftype=ftype, count=1, timeout=timeout)
         return info._asdict()
+
+    async def get_timestamp(self, timeout=5.0):
+        """return the timestamp of a Channel -- the time of last update."""
+        info = await self.get_timevars(timeout=timeout)
+        return info.timestamp
+
+    async def get_severity(self, timeout=5.0):
+        """return the severity of a Channel"""
+        info = await self.get_timevars(timeout=timeout)
+        return info.severity
+
+    async def get_precision(self, timeout=5.0):
+        """return the precision of a Channel"""
+        info = await self.get_ctrlvars(timeout=timeout)
+        try:
+            return info.precision
+        except AttributeError:
+            pass
 
     async def get(self, ftype=None, count=None, timeout=None, as_string=False,
                   as_numpy=True):
@@ -322,6 +341,38 @@ class AsyncClientChannel(caproto.ClientChannel):
                 pass
 
         return unpacked
+
+    async def put(self, values, ftype=None, count=None, timeout=None):
+        """Put a new value to a channel
+
+        Parameters
+        ----------
+        values : sequence of native_type
+        ftype : int
+           field type to use (native type is default)
+        count : int
+           maximum element count to return (full data returned by default)
+        timeout : float
+            maximum time to wait for a response before timing out
+        """
+        if count is not None:
+            count = min(count, self.native_data_count)
+
+        ftype, count = self._fill_defaults(ftype, count)
+        ioid, future = self._init_io_operation()
+
+        try:
+            iter(values)
+        except TypeError:
+            values = [values]
+
+        print(dict(data_type=ftype, data_count=count, sid=self.sid, ioid=ioid,
+                   values=values))
+        command = caproto.WriteNotifyRequest(data_type=ftype, data_count=count,
+                                             sid=self.sid, ioid=ioid, values=values)
+        self.async_vc._write_request(command)
+
+        await self._wait_io_operation(ioid, future, timeout)
 
     async def get_enum_strings(self):
         """return list of names for ENUM states of a Channel.  Returns
