@@ -269,25 +269,6 @@ def host_name(chid):
     return libca.ca_host_name(chid)
 
 
-@withCHID
-def element_count(chid):
-    """return number of elements in Channel's data.
-    1 for most Channels, > 1 for waveform Channels"""
-
-    return libca.ca_element_count(chid)
-
-
-@withCHID
-def read_access(chid):
-    "return *read access* for a Channel: 1 for ``True``, 0 for ``False``."
-    return libca.ca_read_access(chid)
-
-
-@withCHID
-def write_access(chid):
-    "return *write access* for a channel: 1 for ``True``, 0 for ``False``."
-    return libca.ca_write_access(chid)
-
 
 @withCHID
 def field_type(chid):

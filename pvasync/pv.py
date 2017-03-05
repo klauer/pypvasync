@@ -12,11 +12,12 @@ import asyncio
 
 from math import log10
 import numpy as np
+import caproto
 
 from . import ca
 from . import dbr
 from . import config
-from .context import get_current_context
+from .context import get_current_context, AsyncClientChannel
 from . import coroutines
 from .dbr import ChannelType
 from .utils import format_time
@@ -55,6 +56,37 @@ def get_pv(pvname, form='time', connect=False, context=None, timeout=5.0,
     return thispv
 
 
+class PVClientChannel(AsyncClientChannel):
+    def __init__(self, *, pv_instance, **kwargs):
+        super().__init__(**kwargs)
+        self.connected = False
+        self.pv = pv_instance
+        self.access_rights = None
+
+    def state_changed(self, role, old_state, new_state, command=None):
+        super().state_changed(role, old_state, new_state, command=command)
+
+        if role is caproto.SERVER:
+            return
+
+        if new_state is caproto.CONNECTED:
+            self.connected = True
+            self.pv._connected(element_count=self.native_data_count,
+                               native_type=self.native_data_type,
+                               access_rights=self.access_rights,
+                               host=self.circuit.host)
+        elif new_state is caproto.MUST_CLOSE:
+            self.connected = False
+            self.pv._disconnect(deleted=False)
+
+    def _process_command(self, command):
+        super()._process_command(command)
+
+        print('--CH-- process', command)
+        if isinstance(command, caproto.AccessRightsResponse):
+            self.access_rights = command.access_rights
+
+
 class PV(object):
     """Asyncio access to Epics Process Variables
 
@@ -90,7 +122,6 @@ class PV(object):
 
         self._context = get_current_context()
         self.monitor_mask = monitor_mask
-        self.chid = None
         self.pvname = pvname.strip()
         self.form = form.lower()
         self.auto_monitor = auto_monitor
@@ -111,7 +142,11 @@ class PV(object):
         if connection_callback is not None:
             self.connection_callbacks = [connection_callback]
 
-        self.chid = self._context.create_channel(self.pvname)
+        self.channel = self._context.create_channel(self.pvname,
+                                                    channel_class=PVClientChannel,
+                                                    pv_instance=self)
+        self.chid = self.channel.cid
+
         # subscribe should be smart enough to run the subscription if the
         # callback happens inbetween
         self._context.subscribe(sig='connection', func=self.__on_connect,
@@ -131,30 +166,35 @@ class PV(object):
     def __hash__(self):
         return hash(self._pvid)
 
-    def _connected(self, chid):
-        self.chid = dbr.chid_t(chid)
-        try:
-            count = ca.element_count(self.chid)
-        except ca.ChannelAccessException:
-            time.sleep(0.025)
-            count = ca.element_count(self.chid)
-        self._args['count'] = count
-        self._args['nelm'] = count
-        self._args['host'] = ca.host_name(self.chid)
-        self._args['access'] = ca.access(self.chid)
-        self._args['read_access'] = (1 == ca.read_access(self.chid))
-        self._args['write_access'] = (1 == ca.write_access(self.chid))
-        self.ftype = dbr.promote_type(ca.field_type(self.chid),
-                                      use_ctrl=self.form == 'ctrl',
-                                      use_time=self.form == 'time')
+    def _connected(self, element_count, native_type, access_rights, host):
+        self.chid = self.channel.cid
+
+        if access_rights is None:
+            access_rights = 0
+
+        self.ftype = dbr.promote_type(native_type,
+                                      use_ctrl=(self.form == 'ctrl'),
+                                      use_time=(self.form == 'time'))
 
         ftype_name = ChannelType(self.ftype).name.lower()
-        self._args['type'] = ftype_name
-        self._args['typefull'] = ftype_name
-        self._args['ftype'] = self.ftype
+
+        self._args.update(
+            count=element_count,
+            nelm=element_count,
+            host=host,
+            access=access_rights,
+            # TODO upstream somewhere?
+            read_access=((access_rights & 1) == 1),
+            write_access=((access_rights & 2) == 2),
+            type=ftype_name,
+            typefull=ftype_name,
+            ftype=self.ftype,
+            )
+
+        print(self, self._args)
 
         if self.auto_monitor is None:
-            self.auto_monitor = count < config.AUTOMONITOR_MAXLENGTH
+            self.auto_monitor = element_count < config.AUTOMONITOR_MAXLENGTH
         if self._mon_cbid is None and self.auto_monitor:
             # you can explicitly request a subscription mask (ie
             # DBE_ALARM|DBE_LOG) by passing it as the auto_monitor arg,

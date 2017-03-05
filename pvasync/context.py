@@ -103,6 +103,7 @@ class MonitorCallback(ChannelCallbackBase):
     def create(self):
         logger.debug('Creating a subscription on %s (ftype=%s mask=%s)',
                      self.pvname, dbr.ChType(self.ftype).name, self.mask)
+        return
         self.evid = ctypes.c_void_p()
         ca_callback = _on_monitor_event.ca_callback
         self.py_handler_id = ctypes.py_object(self.handler_id)
@@ -193,21 +194,17 @@ class VcProtocol(asyncio.Protocol):
         loop.stop()
 
 
-class ClientChannel(caproto.ClientChannel):
-    def state_changed(self, role, old_state, new_state, command=None):
-        if role is caproto.SERVER:
-            return
+class AsyncClientChannel(caproto.ClientChannel):
+    pass
+    # def state_changed(self, role, old_state, new_state, command=None):
+    #     if role is caproto.SERVER:
+    #         return
 
-        print('state changed', role, old_state, new_state,
-              'command was', command)
-        if new_state is caproto.CONNECTED:
-            print('connected! data type is', self.native_data_type,
-                  'count', self.native_data_count)
-
-    def _process_command(self, command):
-        super()._process_command(command)
-
-        print('i can process', command)
+    #     print('state changed', role, old_state, new_state,
+    #           'command was', command)
+    #     if new_state is caproto.CONNECTED:
+    #         print('connected! data type is', self.native_data_type,
+    #               'count', self.native_data_count)
 
 
 class AsyncVirtualCircuit:
@@ -242,7 +239,8 @@ class AsyncVirtualCircuit:
         self.ch_monitors = {}
         self.evid = {}
 
-        self._vc = caproto.VirtualCircuit(hub=hub, address=self._host,
+        self._vc = caproto.VirtualCircuit(hub=hub,
+                                          address=(self._host, self._port),
                                           priority=self._priority)
         self._read_queue = asyncio.Queue()
         self._write_queue = asyncio.Queue()
@@ -308,15 +306,19 @@ class AsyncVirtualCircuit:
     def add_event(self, type_, info):
         self._event_queue.put((type_, info), block=False)
 
-    def create_channel(self, pvname, *, callback=None):
+    def create_channel(self, pvname, *, callback=None,
+                       channel_class=AsyncClientChannel,
+                       **ch_kwargs):
         try:
             return self.pv_to_channel[pvname]
         except KeyError:
             pass
 
         with self._sub_lock:
-            channel = ClientChannel(self._hub, pvname, address=self._host,
-                                    priority=self._priority)
+            channel = channel_class(hub=self._hub, name=pvname,
+                                    address=(self._host, self._port),
+                                    priority=self._priority,
+                                    **ch_kwargs)
             chid = channel.cid
             self._vc.channels[chid] = channel
 
@@ -329,7 +331,7 @@ class AsyncVirtualCircuit:
                 self.subscribe(sig='connection', chid=chid, func=callback,
                                oneshot=True)
 
-        return chid
+        return channel
 
     def clear_channel(self, pvname):
         with self._sub_lock:

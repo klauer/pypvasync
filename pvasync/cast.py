@@ -4,7 +4,7 @@ import ctypes.util
 import numpy
 from . import dbr
 from .dbr import native_type
-from .ca import (element_count, field_type, withConnectedCHID)
+from .ca import withConnectedCHID
 from .errors import ChannelAccessException
 from .dbr import ChannelType
 from .utils import decode_bytes
