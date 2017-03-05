@@ -243,15 +243,16 @@ class AsyncClientChannel(caproto.ClientChannel):
 
         """
         ftype = dbr.promote_type(self.native_data_type, use_ctrl=True)
-        ioid, future = self._init_io_operation()
+        info = await self.get(ftype=ftype, count=1, timeout=timeout)
+        return info._asdict()
 
-        command = caproto.ReadNotifyRequest(ftype, 1, self.sid, ioid)
-        self.async_vc._write_request(command)
-
-        response = await self._wait_io_operation(ioid, future, timeout)
-        info = response.values
-        return dict((name, getattr(info, name))
-                    for name in info._fields)
+    async def get_timevars(self, timeout=5.0):
+        """returns a dictionary of TIME fields for a Channel.
+        This will contain keys of  *status*, *severity*, and *timestamp*.
+        """
+        ftype = dbr.promote_type(self.native_data_type, use_time=True)
+        info = await self.get(ftype=ftype, count=1, timeout=timeout)
+        return info._asdict()
 
     async def get(self, ftype=None, count=None, timeout=None, as_string=False,
                   as_numpy=True):

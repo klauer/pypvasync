@@ -294,19 +294,18 @@ class PV(object):
             val = val[:count]
         return val
 
-    @asyncio.coroutine
-    def aput(self, value, timeout=30.0, use_complete=False, callback=None,
-             callback_data=None):
+    async def aput(self, value, timeout=30.0, use_complete=False,
+                   callback=None, callback_data=None):
         """set value for PV, optionally waiting until the processing is
         complete, and optionally specifying a callback function to be run
         when the processing is complete.
         """
-        yield from self.wait_for_connection()
+        await self.wait_for_connection()
 
         if self.ftype in caproto.enum_types and isinstance(value, str):
             enum_strs = self._args['enum_strs']
             if enum_strs is None:
-                ctrlvars = yield from self.get_ctrlvars()
+                ctrlvars = await self.get_ctrlvars()
                 enum_strs = ctrlvars['enum_strs']
 
             if value in self._args['enum_strs']:
@@ -318,9 +317,8 @@ class PV(object):
                         break
         if use_complete and callback is None:
             callback = self._put_callback
-        yield from coroutines.put(self.chid, value, timeout=timeout,
-                                  callback=callback,
-                                  callback_data=callback_data)
+        await coroutines.put(self.chid, value, timeout=timeout,
+                             callback=callback, callback_data=callback_data)
 
     get = blocking_wrapper(aget)
     put = blocking_wrapper(aput)
@@ -392,11 +390,10 @@ class PV(object):
         self._args.update(kwds)
         return kwds
 
-    @asyncio.coroutine
-    def get_timevars(self, timeout=5):
+    async def get_timevars(self, timeout=5):
         "get time values for variable"
-        yield from self.wait_for_connection()
-        kwds = yield from coroutines.get_timevars(self.chid, timeout=timeout)
+        await self.wait_for_connection()
+        kwds = await self.channel.get_timevars(timeout=timeout)
         self._args.update(kwds)
         return kwds
 
@@ -459,8 +456,8 @@ class PV(object):
                     index = 1 + max(self.callbacks.keys())
             self.callbacks[index] = (callback, kw)
 
-        if with_ctrlvars and self.connected:
-            await self.get_ctrlvars()  # <-- TODO coroutine
+        # if with_ctrlvars and self.connected:
+        #     self.get_ctrlvars()  # <-- TODO coroutine
         if run_now:
             self.get(as_string=True)
             if self.connected:

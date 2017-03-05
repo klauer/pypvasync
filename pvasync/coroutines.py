@@ -50,33 +50,6 @@ def put(chid, value, timeout=30, callback=None, callback_data=None):
 
 
 @asyncio.coroutine
-def get_timevars(chid, timeout=5.0):
-    """returns a dictionary of TIME fields for a Channel.
-    This will contain keys of  *status*, *severity*, and *timestamp*.
-    """
-    global _cache
-    future = CAFuture()
-    ftype = dbr.promote_type(ca.field_type(chid), use_time=True)
-    ret = ca.libca.ca_array_get_callback(ftype, 1, chid,
-                                         context._on_get_event.ca_callback,
-                                         future.py_object)
-
-    PySEVCHK('get_timevars', ret)
-
-    try:
-        time_val, nvals = yield from asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError:
-        future.cancel()
-        raise
-
-    if not isinstance(time_val, dbr.TimeType):
-        raise RuntimeError('Got back a non-TimeType struct. '
-                           'Type: {}'.format(type(time_val)))
-
-    return time_val.to_dict()
-
-
-@asyncio.coroutine
 def get_timestamp(chid):
     """return the timestamp of a Channel -- the time of last update."""
     info = yield from get_timevars(chid)
