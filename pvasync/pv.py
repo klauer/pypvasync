@@ -69,6 +69,7 @@ class PVClientChannel(AsyncClientChannel):
         if role is caproto.SERVER:
             return
 
+        print(old_state, '->', new_state, type(command))
         if new_state is caproto.CONNECTED:
             self.connected = True
             self.pv._on_connect(element_count=self.native_data_count,

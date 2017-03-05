@@ -38,6 +38,11 @@ class ChannelCallbackBase:
         self.callbacks = OrderedDict()
         self.oneshots = []
 
+    @property
+    def channel(self):
+        # TODO: reason for indirection now? don't think so
+        return self.context._vc.channels[self.chid]
+
     def create(self):
         pass
 

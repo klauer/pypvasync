@@ -82,7 +82,7 @@ class MonitorCallback(ChannelCallbackBase):
         super().__init__(registry=registry, chid=chid)
 
         if ftype is None:
-            ftype = ca.field_type(chid)
+            ftype = self.channel.native_data_type
 
         if mask is None:
             mask = self.default_mask
@@ -94,24 +94,20 @@ class MonitorCallback(ChannelCallbackBase):
         self.native_type = dbr.native_type(self.ftype)
         self._hash_tuple = (self.chid, self.mask, self.ftype)
 
-        # monitor information for when it's created:
-        # python object referencing the callback id
-        self.py_handler_id = None
         # event id returned from ca_create_subscription
         self.evid = None
 
     def create(self):
         logger.debug('Creating a subscription on %s (ftype=%s mask=%s)',
                      self.pvname, dbr.ChType(self.ftype).name, self.mask)
-        return
+
         self.evid = ctypes.c_void_p()
-        ca_callback = _on_monitor_event.ca_callback
-        self.py_handler_id = ctypes.py_object(self.handler_id)
-        ret = ca.libca.ca_create_subscription(self.ftype, 0, self.chid,
-                                              self.mask, ca_callback,
-                                              self.py_handler_id,
-                                              ctypes.byref(self.evid))
-        ca.PySEVCHK('create_subscription', ret)
+        # ->_on_monitor_event
+        context = self.context
+        context._write_request(
+            self.channel.subscribe(data_type=self.ftype, data_count=0,
+                                   mask=self.mask)[1:]
+        )
 
     def destroy(self):
         logger.debug('Clearing subscription on %s (ftype=%s mask=%s) evid=%s',
@@ -121,20 +117,9 @@ class MonitorCallback(ChannelCallbackBase):
         # import gc
         # gc.collect()
 
-        if self.py_handler_id is not None:
-            pass
-            # print('referrers:', )
-            # for i, ref in enumerate(gc.get_referrers(self.py_handler_id)):
-            #     info = str(ref)
-            #     if hasattr(ref, 'f_code'):
-            #         info = '[frame] {}'.format(ref.f_code.co_name)
-            #     print(i, '\t', info)
-
         if self.evid is not None:
             ret = ca.clear_subscription(self.evid)
-            ca.PySEVCHK('clear_subscription', ret)
 
-            self.py_handler_id = None
             self.evid = None
 
     def __repr__(self):
@@ -337,9 +322,6 @@ class AsyncVirtualCircuit:
         with self._sub_lock:
             chid = self.pv_to_channel.pop(pvname)
             del self.channel_to_pv[chid]
-
-            # TODO: investigate segfault
-            # ca.clear_channel(chid)
 
             try:
                 handlers = list(self._cbreg.subscriptions_by_chid(chid))
