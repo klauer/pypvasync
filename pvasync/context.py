@@ -248,6 +248,7 @@ class AsyncVirtualCircuit:
         self._write_queue = asyncio.Queue()
         self._write_event = threading.Event()
 
+        # TODO need to handle unsolicited version requests better
         # self._write_request(
         #     caproto.VersionRequest(version=self._hub.protocol_version,
         #                            priority=self._priority))
@@ -255,10 +256,8 @@ class AsyncVirtualCircuit:
         self._write_request(caproto.ClientNameRequest(caproto.OUR_USERNAME))
 
         self._futures = [
-            asyncio.run_coroutine_threadsafe(self._connect(host, port),
-                                             self._loop),
-            asyncio.run_coroutine_threadsafe(self._write_queue_loop(),
-                                             self._loop),
+            asyncio.run_coroutine_threadsafe(
+                self._connection_context(host, port), self._loop),
             ]
 
     def _write_request(self, command):
@@ -268,46 +267,54 @@ class AsyncVirtualCircuit:
 
             self._write_queue.put_nowait(tuple(command))
 
-    async def _write_queue_loop(self):
-        await self._connected_event.wait()
-        while True:
-            data = await self._write_queue.get()
-            print('[writequeue]', data)
-            to_send = self._vc.send(*data)
-            self._sock.transport.write(to_send)
-
     def _received_ca_command(self, event):
+        if not self._connected_event.is_set():
+            if self._vc._state.states[caproto.CLIENT] is caproto.CONNECTED:
+                self._connected_event.set()
+
         print('received ca event', event)
         self._read_queue.put_nowait(event)
 
     def _ca_failure(self, ex):
-        print('!! ca state failure', ex)
+        print('!! caproto state failure', ex)
 
-    async def _connect(self, host, port):
-        loop = self._loop
+    async def _connection_context(self, host, port):
+        loop = asyncio.get_event_loop()
+        proto, sock = await loop.create_connection(lambda: VcProtocol(self),
+                                                   host, port)
 
-        # # TODO server sends version reply unsolicited!
-        # self._vc.send(caproto.VersionRequest(version=self._hub.protocol_version,
-        #                                      priority=self._priority))
-        self._proto, self._sock = await loop.create_connection(lambda:
-                                                               VcProtocol(self),
-                                                               host, port)
+        self._proto = proto
+        self._sock = sock
 
-        print('--- connected ---', self._sock)
-        self._connected_event.set()
-        print('--- connected set ---')
+        await self._connected_event.wait()
+
+        while True:
+            try:
+                data = await self._write_queue.get()
+                print('[writequeue]', data)
+                to_send = self._vc.send(*data)
+                sock.transport.write(to_send)
+            except caproto.ChannelAccessProtocolError as ex:
+                print('channel access protocol error, trying to continue', ex)
+            except RuntimeError as ex:
+                if loop.is_closed():
+                    break
+                print('write queue failed', type(ex), ex)
+                break
+            except Exception as ex:
+                print('write queue failed', type(ex), ex)
+                break
 
     def add_event(self, type_, info):
         self._event_queue.put((type_, info), block=False)
 
-    async def create_channel(self, pvname, *, callback=None):
+    def create_channel(self, pvname, *, callback=None):
         try:
             return self.pv_to_channel[pvname]
         except KeyError:
             pass
 
         with self._sub_lock:
-            # await self._connected_event.wait()
             channel = ClientChannel(self._hub, pvname, address=self._host,
                                     priority=self._priority)
             chid = channel.cid

@@ -117,16 +117,8 @@ class PV(object):
         self._context.subscribe(sig='connection', func=self.__on_connect,
                                 chid=self.chid)
 
-        native_type = ca.field_type(self.chid)
-        try:
-            self.ftype = dbr.promote_type(native_type,
-                                          use_ctrl=(self.form == 'ctrl'),
-                                          use_time=(self.form == 'time'))
-            self._args['type'] = ChannelType(self.ftype).name.lower()
-        except ValueError:
-            # type is not yet known
-            self.ftype = None
-            self._args['type'] = None
+        self._args['type'] = None
+        self.ftype = None
 
         pvid = self._pvid
         if pvid not in _PVcache_:
