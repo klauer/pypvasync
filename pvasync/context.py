@@ -453,8 +453,7 @@ class AsyncVirtualCircuit:
         self._write_request(caproto.ClientNameRequest(caproto.OUR_USERNAME))
 
         self._futures = [
-            asyncio.run_coroutine_threadsafe(
-                self._connection_context(host, port), self._loop),
+            self._loop.create_task(self._connection_context(host, port)),
             ]
 
     def _write_request(self, command):
@@ -470,7 +469,8 @@ class AsyncVirtualCircuit:
                 self._connected_event.set()
 
         print('received ca event', event)
-        self._read_queue.put_nowait(event)
+        with self._sub_lock:
+            self._read_queue.put_nowait(event)
 
     def _ca_failure(self, ex):
         print('!! caproto state failure', ex)
@@ -485,14 +485,19 @@ class AsyncVirtualCircuit:
 
         await self._connected_event.wait()
 
-        while True:
+        while self._running:
             try:
-                data = await self._write_queue.get()
-                print('[writequeue]', data)
-                to_send = self._vc.send(*data)
-                sock.transport.write(to_send)
+                while self._running:
+                    data = await self._write_queue.get()
+                    print('[writequeue]', data)
+                    if data is None:
+                        break
+                    to_send = self._vc.send(*data)
+                    sock.transport.write(to_send)
             except caproto.ChannelAccessProtocolError as ex:
                 print('channel access protocol error, trying to continue', ex)
+            # except asyncio.CancelledError:
+            #     break
             except RuntimeError as ex:
                 if loop.is_closed():
                     break
@@ -534,7 +539,8 @@ class AsyncVirtualCircuit:
 
     def clear_channel(self, pvname):
         with self._sub_lock:
-            chid = self.pv_to_channel.pop(pvname)
+            channel = self.pv_to_channel.pop(pvname)
+            chid = channel.cid
             del self.channel_to_pv[chid]
 
             try:
@@ -598,7 +604,6 @@ class AsyncVirtualCircuit:
 
     def stop(self):
         self._running = False
-
         if self._tasks:
             for task in self._tasks:
                 logger.debug('Stopping task %s', task)
@@ -609,6 +614,13 @@ class AsyncVirtualCircuit:
         for chid, pvname in list(self.channel_to_pv.items()):
             logger.debug('Destroying channel %s (%d)', pvname, chid)
             self.clear_channel(pvname)
+
+        for fut in self._futures:
+            logger.debug('Cancelling future %s', fut)
+            try:
+                fut.cancel()
+            except RuntimeError:
+                logger.debug('(loop closed)')
 
     def __del__(self):
         self.stop()

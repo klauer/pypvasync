@@ -268,10 +268,11 @@ class PV(object):
                 (not self.auto_monitor) or
                 (self._args['value'] is None) or
                 (count is not None and count > len(self._args['value']))):
-            self._args['value'] = await self.channel.get(ftype=self.ftype,
-                                                         count=count,
-                                                         timeout=timeout,
-                                                         as_numpy=as_numpy)
+
+            val = await self.channel.get(ftype=self.ftype, count=count,
+                                         timeout=timeout, as_numpy=as_numpy)
+            val = val.value
+            self._args['value'] = val
 
         val = self._args['value']
         if as_string:
