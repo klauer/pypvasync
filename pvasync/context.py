@@ -368,8 +368,10 @@ class AsyncClientChannel(caproto.ClientChannel):
 
         print(dict(data_type=ftype, data_count=count, sid=self.sid, ioid=ioid,
                    values=values))
+
         command = caproto.WriteNotifyRequest(data_type=ftype, data_count=count,
-                                             sid=self.sid, ioid=ioid, values=values)
+                                             sid=self.sid, ioid=ioid,
+                                             values=values)
         self.async_vc._write_request(command)
 
         await self._wait_io_operation(ioid, future, timeout)
@@ -393,7 +395,7 @@ class AsyncClientChannel(caproto.ClientChannel):
         if (ftype in caproto.char_types
                 and count < config.AUTOMONITOR_MAXLENGTH):
             val = ''.join(chr(i) for i in val if i > 0).rstrip()
-        elif ftype == ChannelType.ENUM and count == 1:
+        elif ftype == caproto.ChannelType.ENUM and count == 1:
             val = await self.get_enum_strings()[val]
         elif count > 1:
             val = '<array count=%d, type=%d>' % (count, ftype)

@@ -1,8 +1,5 @@
 import sys
 
-# PREEMPTIVE_CALLBACK determines the CA context
-PREEMPTIVE_CALLBACK = True
-
 # maximum element count for auto-monitoring of PVs in epics.pv and for
 # automatic conversion of numerical array data to numpy arrays
 AUTOMONITOR_MAXLENGTH = 65536  # 16384
