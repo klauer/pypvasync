@@ -71,13 +71,13 @@ class PVClientChannel(AsyncClientChannel):
 
         if new_state is caproto.CONNECTED:
             self.connected = True
-            self.pv._connected(element_count=self.native_data_count,
-                               native_type=self.native_data_type,
-                               access_rights=self.access_rights,
-                               host=self.circuit.host)
+            self.pv._on_connect(element_count=self.native_data_count,
+                                native_type=self.native_data_type,
+                                access_rights=self.access_rights,
+                                host=self.circuit.host)
         elif new_state is caproto.MUST_CLOSE:
             self.connected = False
-            self.pv._disconnect(deleted=False)
+            self.pv._on_disconnect(deleted=False)
 
     def _process_command(self, command):
         super()._process_command(command)
@@ -131,7 +131,8 @@ class PV(object):
         # holder of data returned from create_subscription
         self._mon_cbid = None
         self._conn_started = False
-        self.connection_callbacks = []
+        self.connection_callbacks = ([connection_callback]
+                                     if connection_callback else [])
         self.callbacks = {}
         self._args = dict(value=None,
                           pvname=self.pvname,
@@ -139,18 +140,10 @@ class PV(object):
                           precision=None,
                           enum_strs=None)
 
-        if connection_callback is not None:
-            self.connection_callbacks = [connection_callback]
-
         self.channel = self._context.create_channel(self.pvname,
                                                     channel_class=PVClientChannel,
                                                     pv_instance=self)
         self.chid = self.channel.cid
-
-        # subscribe should be smart enough to run the subscription if the
-        # callback happens inbetween
-        self._context.subscribe(sig='connection', func=self.__on_connect,
-                                chid=self.chid)
 
         self._args['type'] = None
         self.ftype = None
@@ -166,7 +159,7 @@ class PV(object):
     def __hash__(self):
         return hash(self._pvid)
 
-    def _connected(self, element_count, native_type, access_rights, host):
+    def _on_connect(self, element_count, native_type, access_rights, host):
         self.chid = self.channel.cid
 
         if access_rights is None:
@@ -193,8 +186,6 @@ class PV(object):
             ftype=self.ftype,
             )
 
-        print(self, self._args)
-
         if self.auto_monitor is None:
             self.auto_monitor = element_count < config.AUTOMONITOR_MAXLENGTH
         if self._mon_cbid is None and self.auto_monitor:
@@ -215,11 +206,12 @@ class PV(object):
                                           mask=mask)
             self._mon_cbid = cbid
 
-    def __on_connect(self, pvname=None, chid=None, connected=True):
-        "callback for connection events"
-        if connected:
-            self._connected(chid)
+        self._update_connection_status(connected=True)
 
+    def _on_disconnect(self):
+        self._update_connection_status(connected=False)
+
+    def _update_connection_status(self, connected):
         try:
             for conn_cb in self.connection_callbacks:
                 conn_cb(pvname=self.pvname, connected=connected, pv=self)
