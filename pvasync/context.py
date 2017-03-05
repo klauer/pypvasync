@@ -224,9 +224,13 @@ class AsyncVirtualCircuit:
         self.ch_monitors = {}
         self.evid = {}
 
+        # TODO i think this has to become a subclass?
         self._vc = caproto.VirtualCircuit(hub=hub,
                                           address=(self._host, self._port),
                                           priority=self._priority)
+        # create reference for channel usage
+        self._vc.async_vc = self
+
         self._read_queue = asyncio.Queue()
         self._write_queue = asyncio.Queue()
         self._write_event = threading.Event()
@@ -497,7 +501,11 @@ def _on_put_event(args, **kwds):
 
 
 client_hub = caproto.Hub(our_role=caproto.CLIENT)
-context = AsyncVirtualCircuit(client_hub, '127.0.0.1', 5064, priority=0)
+circuit_addr = ('127.0.0.1', 5064)
+context = AsyncVirtualCircuit(client_hub, *circuit_addr, priority=0)
+
+# TODO: vc doesn't get registered until a versionreply, meaning PVs can't be created...
+client_hub.circuits[(circuit_addr, 0)] = context._vc
 
 def get_current_context():
     return context
