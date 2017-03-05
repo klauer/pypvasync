@@ -14,6 +14,6 @@ from . import pv
 from . import alarm
 
 from .pv import PV
-from .alarm import (Alarm, )
-from .alarm import (NO_ALARM, MINOR_ALARM, MAJOR_ALARM, INVALID_ALARM)
+from .alarm import (Alarm,
+                    NO_ALARM, MINOR_ALARM, MAJOR_ALARM, INVALID_ALARM)
 from .sync import (caget, caput, caget_many, blocking_mode)
