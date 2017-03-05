@@ -7,35 +7,9 @@ from functools import partial
 
 from . import config
 from . import context
-from . import cast
 
 _pending_futures = {}
 loop = asyncio.get_event_loop()
-
-
-class CAFuture(asyncio.Future):
-    def __init__(self):
-        super().__init__()
-        _pending_futures[self] = ctypes.py_object(self)
-
-    @property
-    def py_object(self):
-        return _pending_futures[self]
-
-    def ca_callback_done(self):
-        del _pending_futures[self]
-        # TODO GC will definitely be important... not sure about py_object ref
-        # counting
-
-        # import gc
-        # gc.collect()
-
-        # print('referrers:', )
-        # for i, ref in enumerate(gc.get_referrers(self)):
-        #     info = str(ref)
-        #     if hasattr(ref, 'f_code'):
-        #         info = '[frame] {}'.format(ref.f_code.co_name)
-        #     print(i, '\t', info)
 
 
 @asyncio.coroutine
@@ -154,18 +128,16 @@ def get_severity(chid):
     return info['severity']
 
 
-@asyncio.coroutine
-def get_precision(chid):
+async def get_precision(chid):
     """return the precision of a Channel."""
     if ca.field_type(chid) not in dbr.native_float_types:
         raise ValueError('Not a floating point type')
 
-    info = yield from get_ctrlvars(chid)
+    info = await get_ctrlvars(chid)
     return info.get('precision', 0)
 
 
-@asyncio.coroutine
-def caput(pvname, value, *, timeout=60):
+async def caput(pvname, value, *, timeout=60):
     """Put to a pv's value.
 
     >>> def coroutine():
@@ -173,17 +145,16 @@ def caput(pvname, value, *, timeout=60):
     ...     print('put done')
     """
     from .pv import get_pv
-    thispv = yield from get_pv(pvname, connect=True)
+    thispv = await get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
-    ret = yield from thispv.aput(value, timeout=timeout)
+    ret = await thispv.aput(value, timeout=timeout)
     return ret
 
 
-@asyncio.coroutine
-def caget(pvname, *, as_string=False, count=None, as_numpy=True,
-          use_monitor=False, timeout=None):
+async def caget(pvname, *, as_string=False, count=None, as_numpy=True,
+                use_monitor=False, timeout=None):
     """caget(pvname, as_string=False)
     simple get of a pv's value..
        >>> x = caget('xx.VAL')
@@ -197,20 +168,19 @@ def caget(pvname, *, as_string=False, count=None, as_numpy=True,
        >>> x = caget('MyArray.VAL', count=1000)
     """
     from .pv import get_pv
-    thispv = yield from get_pv(pvname, connect=True)
+    thispv = await get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
     if as_string:
-        yield from thispv.get_ctrlvars()
-    val = yield from thispv.aget(count=count, timeout=timeout,
-                                 use_monitor=use_monitor, as_string=as_string,
-                                 as_numpy=as_numpy)
+        await thispv.get_ctrlvars()
+    val = await thispv.aget(count=count, timeout=timeout,
+                            use_monitor=use_monitor, as_string=as_string,
+                            as_numpy=as_numpy)
     return val
 
 
-@asyncio.coroutine
-def cainfo(pvname):
+async def cainfo(pvname):
     """cainfo(pvname)
 
     return printable information about pv
@@ -219,12 +189,12 @@ def cainfo(pvname):
     will return a status report for the pv.
     """
     from .pv import get_pv
-    thispv = yield from get_pv(pvname, connect=True)
+    thispv = await get_pv(pvname, connect=True)
     if not thispv.connected:
         raise asyncio.TimeoutError()
 
-    yield from thispv.aget()
-    yield from thispv.get_ctrlvars()
+    await thispv.aget()
+    await thispv.get_ctrlvars()
     return thispv.info
 
 
@@ -236,6 +206,7 @@ def caget_many(pvlist):
     This does not maintain PV objects, and works as fast
     as possible to fetch many values.
     """
+    raise NotImplementedError()
     chids, out = [], []
     for name in pvlist:
         chids.append(ca.create_channel(name, auto_cb=False))

@@ -11,7 +11,6 @@ import caproto
 from caproto import _dbr as dbr
 
 from . import utils
-from . import cast
 from . import errors
 from .callback_registry import (ChannelCallbackRegistry, ChannelCallbackBase,
                                 _locked as _cb_locked)

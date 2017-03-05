@@ -12,10 +12,8 @@ if sys.version_info[0] < 3:
 from . import context
 from . import pv
 from . import alarm
-from . import multiproc
 
 from .pv import PV
 from .alarm import (Alarm, )
-from .multiproc import (CAProcess, CAPool)
 from .alarm import (NO_ALARM, MINOR_ALARM, MAJOR_ALARM, INVALID_ALARM)
 from .sync import (caget, caput, caget_many, blocking_mode)
