@@ -1,8 +1,5 @@
 import asyncio
 
-_pending_futures = {}
-loop = asyncio.get_event_loop()
-
 
 async def caput(pvname, value, *, timeout=60):
     """Put to a pv's value.

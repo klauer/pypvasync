@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import atexit
+import threading
 
 from . import (coroutines, context)
 
@@ -32,7 +33,8 @@ def _background_loop(loop):
 
 
 def _cleanup(loop=None, *args, **kwargs):
-    context.get_contexts().stop()
+    # TODO this will need modifying
+    context.context.stop()
 
     if loop is None:
         loop = asyncio.get_event_loop()
@@ -53,8 +55,9 @@ def blocking_mode(loop=None):
 
     atexit.register(functools.partial(_cleanup, loop=loop))
 
-    _loop_thread = ca.CAThread(target=_background_loop, kwargs=dict(loop=loop),
-                               daemon=True)
+    _loop_thread = threading.Thread(target=_background_loop,
+                                    kwargs=dict(loop=loop), daemon=True)
+
     try:
         _loop_thread.start()
     except Exception:
