@@ -74,7 +74,8 @@ class MonitorCallback(ChannelCallbackBase):
                     dbr.SubscriptionType.DBE_ALARM)
     sig = 'monitor'
 
-    def __init__(self, registry, chid, *, mask=default_mask, ftype=None):
+    def __init__(self, registry, chid, *, mask=default_mask, ftype=None,
+                 count=0):
         super().__init__(registry=registry, chid=chid)
 
         if ftype is None:
@@ -87,36 +88,34 @@ class MonitorCallback(ChannelCallbackBase):
 
         self.mask = int(mask)
         self.ftype = int(ftype)
+        self.count = count
         self.native_type = dbr.native_type(self.ftype)
         self._hash_tuple = (self.chid, self.mask, self.ftype)
-
-        # event id returned from ca_create_subscription
-        self.evid = None
+        self.subid = None
 
     def create(self):
         logger.debug('Creating a subscription on %s (ftype=%s mask=%s)',
                      self.pvname, dbr.ChType(self.ftype).name, self.mask)
 
-        self.evid = ctypes.c_void_p()
         # ->_on_monitor_event
-        context = self.context
-        context._write_request(
-            self.channel.subscribe(data_type=self.ftype, data_count=0,
-                                   mask=self.mask)[1:]
-        )
+        self.subid = self.channel.circuit.new_subscriptionid()
+        self.channel._subid_to_handler[self.subid] = self.handler_id
+        command = caproto.EventAddRequest(self.ftype, self.count,
+                                          self.channel.sid, self.subid,
+                                          low=0.0, high=0.0, to=0.0,
+                                          mask=self.mask)
+        self.context._write_request(command)
 
     def destroy(self):
-        logger.debug('Clearing subscription on %s (ftype=%s mask=%s) evid=%s',
+        logger.debug('Clearing subscription on %s (ftype=%s mask=%s) subid=%s',
                      self.pvname, dbr.ChType(self.ftype).name, self.mask,
-                     self.evid)
+                     self.subid)
         super().destroy()
-        # import gc
-        # gc.collect()
 
-        if self.evid is not None:
-            ret = clear_subscription(self.evid)
-
-            self.evid = None
+        if self.subid is not None:
+            command = self.channel.unsubscribe(self.subid)[1:]
+            self.context._write_request(command)
+            self.subid = None
 
     def __repr__(self):
         return ('{0.__class__.__name__}(chid={0.chid}, mask={0.mask:04b}, '
@@ -181,6 +180,7 @@ class AsyncClientChannel(caproto.ClientChannel):
         self.connected = False
         self.access_rights = None
         self._ioid_to_future = {}
+        self._subid_to_handler = {}
         # TODO this is confusing to have two
         self.async_vc = self.circuit.async_vc
 
@@ -204,14 +204,25 @@ class AsyncClientChannel(caproto.ClientChannel):
             self.access_rights = command.access_rights
         elif isinstance(command, (caproto.ReadNotifyResponse,
                                   caproto.WriteNotifyResponse)):
-            # ReadNotifyResponse(values=<caproto._dbr.DBR_DOUBLE object at
-            # 0x109c0a510>, data_type=6, data_count=1, status=1, ioid=0)
             try:
                 future = self._ioid_to_future[command.ioid]
             except KeyError:
-                print('cancelled io request')
+                # print('cancelled io request')
+                pass
             else:
                 future.set_result(command)
+        elif isinstance(command, (caproto.EventAddResponse, )):
+            handler_id = self._subid_to_handler[command.subscriptionid]
+            data = command.values
+            event_info = dict(chid=self.cid, handler_id=handler_id,
+                              value=data)
+            if hasattr(data, '_asdict'):
+                event_info.update(data._asdict())
+            else:
+                event_info.update({attr: getattr(data, attr)
+                                   for attr, _ in data._fields_})
+            self.async_vc._event_queue.put(('monitor', event_info),
+                                           block=False)
 
     def _init_io_operation(self):
         ioid = self.circuit.new_ioid()
@@ -366,9 +377,6 @@ class AsyncClientChannel(caproto.ClientChannel):
         except TypeError:
             values = [values]
 
-        print(dict(data_type=ftype, data_count=count, sid=self.sid, ioid=ioid,
-                   values=values))
-
         command = caproto.WriteNotifyRequest(data_type=ftype, data_count=count,
                                              sid=self.sid, ioid=ioid,
                                              values=values)
@@ -458,6 +466,8 @@ class AsyncVirtualCircuit:
             self._loop.create_task(self._connection_context(host, port)),
             ]
 
+        self.start()
+
     def _write_request(self, command):
         with self._sub_lock:
             if not isinstance(command, (tuple, list)):
@@ -508,9 +518,6 @@ class AsyncVirtualCircuit:
             except Exception as ex:
                 print('write queue failed', type(ex), ex)
                 break
-
-    def add_event(self, type_, info):
-        self._event_queue.put((type_, info), block=False)
 
     def create_channel(self, pvname, *, callback=None,
                        channel_class=AsyncClientChannel,

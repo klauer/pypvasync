@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# test expression parsing
+# unit-tests for ca interface
 import os
 import time
 import numpy

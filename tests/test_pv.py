@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# unit-tests for ca interface
+# unit-tests for pv interface
 
 import unittest
 import asyncio

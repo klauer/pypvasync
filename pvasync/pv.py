@@ -192,11 +192,11 @@ class PV(object):
                                          use_time=use_time)
 
             ctx = self._context
-            # handler, cbid = ctx.subscribe(sig='monitor',
-            #                               func=self._monitor_update,
-            #                               chid=self.chid, ftype=ptype,
-            #                               mask=mask)
-            # self._mon_cbid = cbid
+            handler, cbid = ctx.subscribe(sig='monitor',
+                                          func=self._monitor_update,
+                                          chid=self.chid, ftype=ptype,
+                                          mask=mask)
+            self._mon_cbid = cbid
 
         self._update_connection_status(connected=True)
 
@@ -256,8 +256,8 @@ class PV(object):
             maximum time to wait for value to be received.
                 (default = 0.5 + log10(count) seconds)
         use_monitor : bool, optional
-            use value from latest monitor callback (True, default) or to make an
-            explicit CA call for the value.
+            use value from latest monitor callback (True, default) or to make
+            an explicit CA call for the value.
         """
         await self.wait_for_connection()
 
@@ -331,10 +331,6 @@ class PV(object):
     get = blocking_wrapper(aget)
     put = blocking_wrapper(aput)
 
-    def _put_callback(self, pvname=None, **kws):
-        '''default put-callback function'''
-        pass
-
     def _set_charval(self, val, call_ca=True):
         """ sets the character representation of the value.
         intended only for internal use"""
@@ -347,7 +343,8 @@ class PV(object):
             self._args['char_value'] = val
             return val
         # char waveform as string
-        if ntype == ChannelType.CHAR and self.count < config.AUTOMONITOR_MAXLENGTH:
+        if (ntype == ChannelType.CHAR and
+                self.count < config.AUTOMONITOR_MAXLENGTH):
             if isinstance(val, np.ndarray):
                 val = val.tolist()
             elif self.count == 1:  # handles single character in waveform
@@ -410,6 +407,7 @@ class PV(object):
         To have user-defined code run when the PV value changes,
         use add_callback()
         """
+        print('-- monitor update')
         self._args.update(kwd)
         self._args['value'] = value
         self._args['timestamp'] = kwd.get('timestamp', time.time())
