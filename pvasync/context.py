@@ -264,12 +264,17 @@ class AsyncClientChannel(caproto.ClientChannel):
         """
         ftype = dbr.promote_type(self.native_data_type, use_time=True)
         info = await self.get(ftype=ftype, count=1, timeout=timeout)
-        return info._asdict()
+        timestamp = caproto.epics_timestamp_to_unix(info.secondsSinceEpoch,
+                                                    info.nanoSeconds)
+
+        timevars = info._asdict()
+        timevars['timestamp'] = timestamp
+        return timevars
 
     async def get_timestamp(self, timeout=5.0):
         """return the timestamp of a Channel -- the time of last update."""
         info = await self.get_timevars(timeout=timeout)
-        return info.timestamp
+        return info['timestamp']
 
     async def get_severity(self, timeout=5.0):
         """return the severity of a Channel"""

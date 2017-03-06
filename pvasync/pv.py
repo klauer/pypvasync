@@ -407,7 +407,6 @@ class PV(object):
         To have user-defined code run when the PV value changes,
         use add_callback()
         """
-        print('-- monitor update')
         self._args.update(kwd)
         self._args['value'] = value
         self._args['timestamp'] = kwd.get('timestamp', time.time())
